@@ -1085,75 +1085,76 @@ const VidenteGame = () => {
 
       {/* Header con estadísticas principales */}
       <div className="bg-black rounded-lg p-4 mb-4 w-full max-w-6xl">
-        <div className="grid grid-cols-3 gap-4 text-white">
-          {/* Aventurero Actual */}
-          <div className="bg-gradient-to-br from-orange-600/30 to-orange-800/30 rounded-lg p-3 border-2 border-orange-500/50">
-            <div className="flex items-center gap-2 mb-2">
-              <User className="text-orange-400" size={20} />
-              <span className="font-bold text-sm">Aventurero Actual</span>
+  {/* En pantallas pequeñas: 1 columna; en >=sm: columnas con anchos iguales a los paneles inferiores */}
+  <div className="grid grid-cols-1 lg:grid-cols-[16rem_16rem_16rem] gap-2 lg:gap-4 text-white justify-center">
+          {/* Aventurero Actual (compacto) */}
+          <div className="bg-gradient-to-br from-orange-600/30 to-orange-800/30 rounded-md p-2 border-2 border-orange-500/50">
+            <div className="flex items-center gap-2 mb-1">
+              <User className="text-orange-400" size={18} />
+              <span className="font-bold text-xs">Aventurero Actual</span>
             </div>
             <div className="space-y-1">
               <div className="flex justify-between items-center">
-                <span className="text-xs">Oro:</span>
-                <span className="font-bold text-yellow-400">${adventurerGold}</span>
+                <span className="text-[11px]">Oro:</span>
+                <span className="font-bold text-yellow-400 text-sm">${adventurerGold}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs">Energía:</span>
-                <span className="font-bold text-yellow-400">{energy}/{INITIAL_ENERGY}</span>
+                <span className="text-[11px]">Energía:</span>
+                <span className="font-bold text-yellow-400 text-sm">{energy}/{INITIAL_ENERGY}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs">Multiplicador:</span>
-                <span className="font-bold text-green-400">x{multiplier.toFixed(1)}</span>
+                <span className="text-[11px]">Multiplicador:</span>
+                <span className="font-bold text-green-400 text-sm">x{multiplier.toFixed(1)}</span>
               </div>
             </div>
           </div>
 
-          {/* Jugador */}
-          <div className="bg-gradient-to-br from-blue-600/30 to-blue-800/30 rounded-lg p-3 border-2 border-blue-500/50">
-            <div className="flex items-center gap-2 mb-3">
-              <DollarSign className="text-blue-400" size={20} />
-              <span className="font-bold text-sm">Tu Oro Total</span>
+          {/* Jugador (compacto) */}
+          <div className="bg-gradient-to-br from-blue-600/30 to-blue-800/30 rounded-md p-2 border-2 border-blue-500/50">
+            <div className="flex items-center gap-2 mb-2">
+              <DollarSign className="text-blue-400" size={18} />
+              <span className="font-bold text-xs">Tu Oro Total</span>
             </div>
             <div className="flex justify-center items-center">
-              <span className="font-bold text-yellow-400 text-3xl">${playerGold}</span>
+              <span className="font-bold text-yellow-400 text-2xl">${playerGold}</span>
             </div>
           </div>
 
-          {/* Alquiler */}
-          <div className={`rounded-lg p-3 border-2 ${
+          {/* Alquiler (compacto) */}
+          <div className={`rounded-md p-2 border-2 ${
             esUltimaRondaAntesAlquiler 
               ? 'bg-gradient-to-br from-red-600/40 to-red-800/40 border-red-500/70' 
               : 'bg-gradient-to-br from-purple-600/30 to-purple-800/30 border-purple-500/50'
           }`}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-2xl">🏠</span>
-              <span className="font-bold text-sm">Alquiler</span>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">🏠</span>
+              <span className="font-bold text-xs">Alquiler</span>
             </div>
             <div className="space-y-1">
               <div className="flex justify-between items-center">
-                <span className="text-xs">Precio:</span>
-                <span className="font-bold text-yellow-400">${rentPrice}</span>
+                <span className="text-[11px]">Precio:</span>
+                <span className="font-bold text-yellow-400 text-sm">${rentPrice}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs">En:</span>
-                <span className={`font-bold ${esUltimaRondaAntesAlquiler ? 'text-red-400' : 'text-gray-400'}`}>
+                <span className="text-[11px]">En:</span>
+                <span className={`font-bold ${esUltimaRondaAntesAlquiler ? 'text-red-400' : 'text-gray-400'} text-sm`}>
                   {rondasHastaAlquiler} {rondasHastaAlquiler === 1 ? 'ronda' : 'rondas'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs">Ronda:</span>
-                <span className="font-bold text-gray-300">{currentRound}</span>
+                <span className="text-[11px]">Ronda:</span>
+                <span className="font-bold text-gray-300 text-sm">{currentRound}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-4 w-full max-w-6xl justify-center items-start">
+      <div className="flex flex-col lg:flex-row gap-4 w-full max-w-6xl justify-center items-start">
         {/* Panel de cartas */}
-        <div className="bg-black rounded-lg p-4 flex-shrink-0">
+        <div className="bg-black rounded-lg p-4 flex-shrink-0 w-full lg:w-64">
           <div className="text-white font-bold mb-3">📇 Cartas de Escaneo</div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-row lg:flex-col gap-2 flex-wrap justify-center lg:justify-start">
             {availableCards.map(card => (
               <button
                 key={card.id}
@@ -1196,9 +1197,9 @@ const VidenteGame = () => {
         </div>
 
         {/* Board */}
-        <div className="bg-black rounded-lg p-4">
+  <div className="bg-black rounded-lg p-4 overflow-x-auto">
           <div className="flex">
-            <div className="w-12"></div>
+            <div className="w-8 sm:w-12"></div>
             <div 
               className="grid gap-1"
               style={{
@@ -1265,8 +1266,8 @@ const VidenteGame = () => {
           </div>
         </div>
 
-        {/* Bola de Cristal */}
-        <div className="bg-black rounded-lg p-4 flex-shrink-0 flex flex-col items-center">
+  {/* Bola de Cristal */}
+  <div className="bg-black rounded-lg p-4 flex-shrink-0 w-full sm:w-auto flex flex-col items-center">
           <div className="text-white font-bold mb-3 text-center">
             🔮 Visión
             <div className="text-sm font-normal mt-1">
@@ -1289,8 +1290,8 @@ const VidenteGame = () => {
               }
             }}
             style={{
-              width: '160px',
-              height: '160px',
+              width: 'clamp(120px, 20vw, 160px)',
+              height: 'clamp(120px, 20vw, 160px)',
               background: isCrystalBallActive
                 ? 'radial-gradient(circle at 40% 40%, rgba(250, 204, 21, 0.4), rgba(234, 179, 8, 0.6), rgba(161, 98, 7, 0.9))'
                 : 'radial-gradient(circle at 40% 40%, rgba(147, 51, 234, 0.4), rgba(79, 70, 229, 0.6), rgba(30, 27, 75, 0.9))',
