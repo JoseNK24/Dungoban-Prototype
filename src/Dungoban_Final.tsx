@@ -421,7 +421,6 @@ const VidenteGame = () => {
   const [victory, setVictory] = useState(false);
   const [crystalBallCounter, setCrystalBallCounter] = useState(0);
   const [isCrystalBallActive, setIsCrystalBallActive] = useState(false);
-  const [is2x2ModeActive, setIs2x2ModeActive] = useState(false);
 
 
   // Función para continuar jugando (aumenta multiplicador)
@@ -482,17 +481,6 @@ const VidenteGame = () => {
     // Reiniciar estado de la bola de cristal
     setCrystalBallCounter(0);
     setIsCrystalBallActive(false);
-    setIs2x2ModeActive(false);
-    
-    // Reiniciar estado de la bola de cristal
-    setCrystalBallCounter(0);
-    setIsCrystalBallActive(false);
-    setIs2x2ModeActive(false);
-    
-    // Reiniciar el sistema de predicciones
-    setCrystalBallCounter(0);
-    setIsCrystalBallActive(false);
-    setIs2x2ModeActive(false);
     
     // Incrementar ronda
     const nextRound = currentRound + 1;
@@ -541,7 +529,6 @@ const VidenteGame = () => {
     setVictory(false);
     setCrystalBallCounter(0);
     setIsCrystalBallActive(false);
-    setIs2x2ModeActive(false);
     setHoveredCell(null);
     setSelectedCard(null);
     setCardRotation(0);
@@ -572,16 +559,24 @@ const VidenteGame = () => {
     }
   };
 
+  const getClarivoyanceSize = (predictions: number): number => {
+    if (predictions >= 9) return 4;
+    if (predictions >= 6) return 3;
+    if (predictions >= 3) return 2;
+    return 0;
+  };
+
   const canPlaceCard = (x: number, y: number, pattern: CardPattern[]): boolean => {
-    // Caso especial para el modo 2x2
-    if (is2x2ModeActive) {
-      // Verificar que el área 2x2 está dentro del tablero
-      if (x + 1 >= GRID_WIDTH || y + 1 >= GRID_HEIGHT) {
+    // Caso especial para el modo de clarividencia
+    if (isCrystalBallActive) {
+      const size = getClarivoyanceSize(crystalBallCounter);
+      // Verificar que el área está dentro del tablero
+      if (x + size - 1 >= GRID_WIDTH || y + size - 1 >= GRID_HEIGHT) {
         return false;
       }
-      // Verificar que no hay muros ni puertas en el área 2x2
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
+      // Verificar que no hay muros ni puertas en el área
+      for (let dy = 0; dy < size; dy++) {
+        for (let dx = 0; dx < size; dx++) {
           const checkX = x + dx;
           const checkY = y + dy;
           const cell = board[checkY][checkX];
@@ -612,36 +607,35 @@ const VidenteGame = () => {
 
   const placeCard = (x: number, y: number): void => {
     // Si estamos en modo 2x2, permitir colocar sin necesidad de una carta
-    if (!is2x2ModeActive && (!selectedCard || selectedCard.used)) return;
+    if (!isCrystalBallActive && (!selectedCard || selectedCard.used)) return;
     
-    // Si no estamos en modo 2x2, necesitamos el patrón de la carta
-    const pattern = is2x2ModeActive ? [] : rotatePattern(selectedCard!.patternData, cardRotation);
+    // Si no estamos en modo clarividencia, necesitamos el patrón de la carta
+    const pattern = isCrystalBallActive ? [] : rotatePattern(selectedCard!.patternData, cardRotation);
     
     if (!canPlaceCard(x, y, pattern)) {
       return;
     }
     
     const newBoard = [...board.map(row => [...row])];
-    const detectionType = is2x2ModeActive ? null : selectedCard!.detectionType;
+    const detectionType = isCrystalBallActive ? null : selectedCard!.detectionType;
     
-    // Si estamos en modo 2x2, revelar todo en un área 2x2
-    if (is2x2ModeActive) {
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
+    // Si estamos en modo clarividencia, revelar el área según el tamaño
+    if (isCrystalBallActive) {
+      const size = getClarivoyanceSize(crystalBallCounter);
+      for (let dy = 0; dy < size; dy++) {
+        for (let dx = 0; dx < size; dx++) {
           const revealX = x + dx;
           const revealY = y + dy;
           if (revealX >= 0 && revealX < GRID_WIDTH && revealY >= 0 && revealY < GRID_HEIGHT) {
             const cell = newBoard[revealY][revealX];
             if (cell.type !== 'wall' && cell.type !== 'door') {
               cell.revealed = true;
-              cell.counted = true; // Marcar como contada para que no afecte al contador
+              cell.counted = true;
             }
           }
         }
       }
-      setIs2x2ModeActive(false);
       setIsCrystalBallActive(false);
-      setCrystalBallCounter(0);
       setBoard(newBoard);
       return;
     }
@@ -695,7 +689,7 @@ const VidenteGame = () => {
     
     setBoard(newBoard);
     
-    if (!is2x2ModeActive && selectedCard) {
+    if (!isCrystalBallActive && selectedCard) {
       setAvailableCards(availableCards.map(c => 
         c.id === selectedCard.id ? { 
           ...c, 
@@ -713,7 +707,7 @@ const VidenteGame = () => {
     if (isExecuting || gameOver) return;
 
     if (mode === 'explore') {
-      if (selectedCard || is2x2ModeActive) {
+      if (selectedCard || isCrystalBallActive) {
         placeCard(x, y);
       }
     } else if (mode === 'trace') {
@@ -815,23 +809,56 @@ const VidenteGame = () => {
     return () => clearTimeout(timer);
   }, [isExecuting, executionStep, energy, adventurerGold, playerGold, currentRound, rentPrice, victory]);
 
+  // Efecto para el comando secreto y prevención de menú contextual
   useEffect(() => {
     const preventContext = (e: Event) => e.preventDefault();
-    document.addEventListener('contextmenu', preventContext);
-    return () => document.removeEventListener('contextmenu', preventContext);
-  }, []);
-
-  const getColumnContent = (colIndex: number): string[] => {
-    const content: string[] = [];
-    for (let row = 0; row < GRID_HEIGHT; row++) {
-      const cell = board[row][colIndex];
-      if (cell.type === 'enemy' && !cell.revealed && cell.enemyType && cell.enemyType in ENEMY_TYPES) {
-        content.push(ENEMY_TYPES[cell.enemyType].icon);
-      } else if (cell.type === 'pill' && !cell.collected) {
-        content.push('💊');
+    
+    // Comando secreto: Ctrl + Shift + R
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+        e.preventDefault();
+        // Revelar todo el tablero
+        const newBoard = board.map(row => 
+          row.map(cell => ({
+            ...cell,
+            revealed: true
+          }))
+        );
+        setBoard(newBoard);
       }
-    }
-    return content;
+    };
+
+    document.addEventListener('contextmenu', preventContext);
+    document.addEventListener('keydown', handleKeyPress);
+    
+    return () => {
+      document.removeEventListener('contextmenu', preventContext);
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [board]);
+
+  const getLineContent = (cells: Cell[]): string => {
+    const counts: { [key: string]: number } = {};
+    
+    // Contar ocurrencias
+    cells.forEach(cell => {
+      if (cell.type === 'enemy' && cell.enemyType && cell.enemyType in ENEMY_TYPES) {
+        const icon = ENEMY_TYPES[cell.enemyType].icon;
+        counts[icon] = (counts[icon] || 0) + 1;
+      } else if (cell.type === 'pill' && !cell.collected) {
+        counts['💊'] = (counts['💊'] || 0) + 1;
+      }
+    });
+    
+    // Formatear la salida
+    return Object.entries(counts)
+      .map(([icon, count]) => `x${count} ${icon}`)
+      .join(' ');
+  };
+
+  const getColumnContent = (colIndex: number): string => {
+    const cells = Array.from({ length: GRID_HEIGHT }, (_, row) => board[row][colIndex]);
+    return getLineContent(cells);
   };
 
   const getAbilityIcon = (detectionType: DetectionType) => {
@@ -844,17 +871,8 @@ const VidenteGame = () => {
     }
   };
 
-  const getRowContent = (rowIndex: number): string[] => {
-    const content: string[] = [];
-    for (let col = 0; col < GRID_WIDTH; col++) {
-      const cell = board[rowIndex][col];
-      if (cell.type === 'enemy' && !cell.revealed && cell.enemyType && cell.enemyType in ENEMY_TYPES) {
-        content.push(ENEMY_TYPES[cell.enemyType].icon);
-      } else if (cell.type === 'pill' && !cell.collected) {
-        content.push('💊');
-      }
-    }
-    return content;
+  const getRowContent = (rowIndex: number): string => {
+    return getLineContent(board[rowIndex]);
   };
 
   const renderCell = (cell: Cell, x: number, y: number) => {
@@ -951,13 +969,14 @@ const VidenteGame = () => {
     }
     
     if (mode === 'explore') {
-      if (is2x2ModeActive && hoveredCell) {
-        // Preview para el modo 2x2
-        const isIn2x2Area = 
-          x >= hoveredCell.x && x <= hoveredCell.x + 1 &&
-          y >= hoveredCell.y && y <= hoveredCell.y + 1;
+      if (isCrystalBallActive && hoveredCell) {
+        // Preview para el modo de clarividencia
+        const size = getClarivoyanceSize(crystalBallCounter);
+        const isInArea = 
+          x >= hoveredCell.x && x <= hoveredCell.x + (size - 1) &&
+          y >= hoveredCell.y && y <= hoveredCell.y + (size - 1);
 
-        if (isIn2x2Area) {
+        if (isInArea) {
           const canPlace = canPlaceCard(hoveredCell.x, hoveredCell.y, []);
           borderColor = canPlace ? '#ffeb3b' : '#ff0000';
           if (canPlace) {
@@ -1161,7 +1180,7 @@ const VidenteGame = () => {
                 onClick={() => {
                   setSelectedCard(card);
                   setCardRotation(0);
-                  setIs2x2ModeActive(false); // Desactivar modo 2x2 al seleccionar una carta
+                  setIsCrystalBallActive(false); // Desactivar clarividencia al seleccionar una carta
                 }}
                 disabled={card.used || mode !== 'explore'}
                 style={{
@@ -1199,7 +1218,7 @@ const VidenteGame = () => {
         {/* Board */}
   <div className="bg-black rounded-lg p-4 overflow-x-auto">
           <div className="flex">
-            <div className="w-8 sm:w-12"></div>
+            <div className="pr-1" style={{ minWidth: '100px' }}></div>
             <div 
               className="grid gap-1"
               style={{
@@ -1208,20 +1227,24 @@ const VidenteGame = () => {
             >
               {Array.from({ length: GRID_WIDTH }, (_, i) => {
                 const colContent = getColumnContent(i);
+                // Parsear el contenido para separar cada elemento (ej: "x1 💊 x2 🔥" -> ["x1 💊", "x2 🔥"])
+                const elements = colContent ? colContent.match(/x\d+\s+\S+/g) || [] : [];
                 return (
                   <div 
-                    key={`col-header-${i}`} 
-                    className="text-center text-white font-bold pb-1 flex flex-col items-center justify-end h-16 overflow-hidden"
-                    style={{ fontSize: '11px', lineHeight: '14px' }}
-                  >
-                    {colContent.length > 0 ? (
-                      colContent.map((emoji, idx) => (
-                        <div key={idx}>{emoji}</div>
-                      ))
-                    ) : (
-                      <div>—</div>
-                    )}
-                  </div>
+  key={`col-header-${i}`} 
+  className="text-white font-bold pb-1 flex flex-col items-center justify-end gap-0.5"
+  style={{ fontSize: '11px', minHeight: '80px', width: '45px' }}
+>
+  {elements.length > 0 ? (
+    elements.map((element, idx) => (
+      <div key={idx} className="whitespace-nowrap">
+        {element}
+      </div>
+    ))
+  ) : (
+    <div>—</div>
+  )}
+</div>
                 );
               })}
             </div>
@@ -1232,6 +1255,7 @@ const VidenteGame = () => {
               className="grid gap-1 pr-1"
               style={{
                 gridTemplateRows: `repeat(${GRID_HEIGHT}, 45px)`,
+                minWidth: '100px'
               }}
             >
               {Array.from({ length: GRID_HEIGHT }, (_, i) => {
@@ -1239,10 +1263,12 @@ const VidenteGame = () => {
                 return (
                   <div 
                     key={`row-header-${i}`} 
-                    className="flex items-center justify-center text-white font-bold text-xs w-12 flex-wrap overflow-hidden"
-                    style={{ fontSize: '10px' }}
+                    className="flex items-center justify-end text-white font-bold"
+                    style={{ fontSize: '11px', minWidth: '100px' }}
                   >
-                    {rowContent.length > 0 ? rowContent.join('') : '—'}
+                    <div className="whitespace-nowrap">
+                      {rowContent || '—'}
+                    </div>
                   </div>
                 );
               })}
@@ -1271,20 +1297,25 @@ const VidenteGame = () => {
           <div className="text-white font-bold mb-3 text-center">
             🔮 Visión
             <div className="text-sm font-normal mt-1">
-              {crystalBallCounter}/3
+              {crystalBallCounter} predicciones
+              {crystalBallCounter >= 3 && (
+                <div className="text-xs text-yellow-400 mt-1">
+                  {crystalBallCounter >= 9 ? "¡Área 4x4 disponible!" :
+                   crystalBallCounter >= 6 ? "¡Área 3x3 disponible!" :
+                   "¡Área 2x2 disponible!"}
+                </div>
+              )}
             </div>
           </div>
           
           <div 
             className="relative flex items-center justify-center rounded-full"
             onClick={() => {
-              if (isCrystalBallActive) {
-                // Si ya está en modo 2x2, lo desactivamos
-                if (is2x2ModeActive) {
-                  setIs2x2ModeActive(false);
+              if (crystalBallCounter >= 3) {
+                if (isCrystalBallActive) {
+                  setIsCrystalBallActive(false);
                 } else {
-                  // Si no está en modo 2x2, lo activamos y desactivamos la carta seleccionada
-                  setIs2x2ModeActive(true);
+                  setIsCrystalBallActive(true);
                   setSelectedCard(null);
                 }
               }
