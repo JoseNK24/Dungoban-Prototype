@@ -379,7 +379,7 @@ const VidenteGame = () => {
     return board;
   };
 
-  // Estados del sistema de aventurero y multiplicador
+  // Estados del sistema de ladrón y multiplicador
   const [adventurerGold, setAdventurerGold] = useState(0);
   const [playerGold, setPlayerGold] = useState(0);
   const [multiplier, setMultiplier] = useState(1.0);
@@ -725,7 +725,7 @@ const VidenteGame = () => {
         return;
       }
       
-      // La lógica de fin de ronda ahora se maneja cuando el aventurero llega a la puerta
+      // La lógica de fin de ronda ahora se maneja cuando el ladrón llega a la puerta
       // y el jugador toma una decisión en el modal
       
       setExecutionStep(executionStep + 1);
@@ -996,7 +996,7 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">📜 Tu Historia</h3>
                 <p className="text-sm leading-relaxed">
-                  Eres <span className="text-purple-300 font-semibold">Dungoban</span>, un vidente al que los aventureros acuden para saber cómo hacerse ricos. Tu fama crece mazmorra a mazmorra: cuanto más lejos llegue el aventurero, más oro acumulas.
+                  Eres <span className="text-purple-300 font-semibold">Dungoban</span>, un vidente al que los ladrones acuden para saber cómo hacerse ricos. Tu fama crece mazmorra a mazmorra: cuanto más lejos llegue el ladrón, más oro acumulas.
                 </p>
               </div>
               
@@ -1004,10 +1004,10 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">🎯 Objetivo</h3>
                 <p className="text-sm leading-relaxed">
-                  Guía al aventurero de la entrada a la salida recogiendo todo el oro posible por el camino. Las mazmorras no terminan: cada sala superada abre la siguiente.
+                  Guía al ladrón de la entrada a la salida recogiendo todo el oro posible por el camino. Las mazmorras no terminan: cada sala superada abre la siguiente.
                 </p>
                 <p className="text-sm leading-relaxed mt-2 text-purple-300">
-                  No todas las rutas son igual de seguras. Si el aventurero muere, pierde el oro que llevaba encima.
+                  No todas las rutas son igual de seguras. Si el ladrón muere, pierde el oro que llevaba encima.
                 </p>
               </div>
               
@@ -1027,7 +1027,7 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">⚠️ Energía</h3>
                 <p className="text-sm leading-relaxed">
-                  Ten cuidado con la <span className="text-yellow-300 font-semibold">energía</span> de los aventureros. Si llega a cero, perderás todo el botín.
+                  Ten cuidado con la <span className="text-yellow-300 font-semibold">energía</span> de los ladrones. Si llega a cero, perderás todo el botín.
                 </p>
               </div>
             </div>
@@ -1048,11 +1048,11 @@ const VidenteGame = () => {
       <div className="bg-black rounded-lg p-4 mb-4 w-full max-w-6xl">
   {/* En pantallas pequeñas: 1 columna; en >=sm: columnas con anchos iguales a los paneles inferiores */}
   <div className="grid grid-cols-1 lg:grid-cols-[16rem_16rem] gap-2 lg:gap-4 text-white justify-center">
-          {/* Aventurero Actual (compacto) */}
+          {/* Ladrón Actual (compacto) */}
           <div className="bg-gradient-to-br from-orange-600/30 to-orange-800/30 rounded-md p-2 border-2 border-orange-500/50">
             <div className="flex items-center gap-2 mb-1">
               <User className="text-orange-400" size={18} />
-              <span className="font-bold text-xs">Aventurero Actual</span>
+              <span className="font-bold text-xs">Ladrón Actual</span>
             </div>
             <div className="space-y-1">
               <div className="flex justify-between items-center">
