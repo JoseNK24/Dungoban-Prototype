@@ -102,7 +102,7 @@ interface CardPattern {
 }
 
 interface Cell {
-  type: 'empty' | 'door' | 'gold' | 'wall' | 'pill' | 'enemy';
+  type: 'empty' | 'door' | 'exit' | 'gold' | 'wall' | 'pill' | 'enemy';
   revealed: boolean;
   scanned: boolean;
   threatLevel: number;
@@ -213,7 +213,33 @@ const VidenteGame = () => {
       y: Math.floor(Math.random() * GRID_HEIGHT)
     };
     board[doorPos.y][doorPos.x] = { type: 'door' as const, revealed: true, scanned: false, threatLevel: 0 };
-    
+
+    // Puerta de salida, lejos de la entrada
+    let exitPlaced = false;
+    let exitAttempts = 0;
+    while (!exitPlaced && exitAttempts < 200) {
+      const exitPos = {
+        x: Math.floor(Math.random() * GRID_WIDTH),
+        y: Math.floor(Math.random() * GRID_HEIGHT)
+      };
+      const distFromDoor = Math.abs(exitPos.x - doorPos.x) + Math.abs(exitPos.y - doorPos.y);
+      if (board[exitPos.y][exitPos.x].type === 'empty' && distFromDoor >= MIN_GOLD_DISTANCE + 2) {
+        board[exitPos.y][exitPos.x] = { type: 'exit' as const, revealed: true, scanned: false, threatLevel: 0 };
+        exitPlaced = true;
+      }
+      exitAttempts++;
+    }
+    if (!exitPlaced) {
+      for (let ey = 0; ey < GRID_HEIGHT && !exitPlaced; ey++) {
+        for (let ex = 0; ex < GRID_WIDTH && !exitPlaced; ex++) {
+          if (board[ey][ex].type === 'empty') {
+            board[ey][ex] = { type: 'exit' as const, revealed: true, scanned: false, threatLevel: 0 };
+            exitPlaced = true;
+          }
+        }
+      }
+    }
+
   // Gold reward per round: random between 5 and 10 (inclusive)
   const goldValue = Math.floor(Math.random() * 6) + 5;
   // Add extra randomness so the minimum distance between door and gold varies per board
@@ -526,7 +552,7 @@ const VidenteGame = () => {
           const checkX = x + dx;
           const checkY = y + dy;
           const cell = board[checkY][checkX];
-          if (cell.type === 'wall' || cell.type === 'door') {
+          if (cell.type === 'wall' || cell.type === 'door' || cell.type === 'exit') {
             return false;
           }
         }
@@ -538,13 +564,13 @@ const VidenteGame = () => {
     for (const cell of pattern) {
       const newX = x + cell.pos[1];
       const newY = y + cell.pos[0];
-      
+
       if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
         return false;
       }
-      
+
       const boardCell = board[newY][newX];
-      if (boardCell.type === 'wall' || boardCell.type === 'door' || boardCell.type === 'gold') {
+      if (boardCell.type === 'wall' || boardCell.type === 'door' || boardCell.type === 'exit') {
         return false;
       }
     }
@@ -575,7 +601,7 @@ const VidenteGame = () => {
           const revealY = y + dy;
           if (revealX >= 0 && revealX < GRID_WIDTH && revealY >= 0 && revealY < GRID_HEIGHT) {
             const cell = newBoard[revealY][revealX];
-            if (cell.type !== 'wall' && cell.type !== 'door') {
+            if (cell.type !== 'wall' && cell.type !== 'door' && cell.type !== 'exit') {
               cell.revealed = true;
               cell.counted = true;
             }
@@ -616,7 +642,7 @@ const VidenteGame = () => {
             matchesFound++;
             boardCell.counted = true;
           }
-        } else if (boardCell.type === 'enemy' || boardCell.type === 'pill') {
+        } else if (boardCell.type === 'enemy' || boardCell.type === 'pill' || (boardCell.type === 'gold' && !boardCell.collected)) {
           boardCell.scanned = true;
           boardCell.hasContent = true;
         } else if (boardCell.type === 'empty' || boardCell.type === 'wall') {
@@ -662,7 +688,11 @@ const VidenteGame = () => {
       }
     } else if (mode === 'trace') {
       const lastPos = path[path.length - 1];
-      
+
+      if (board[lastPos.y][lastPos.x].type === 'exit') {
+        return;
+      }
+
       if (board[y][x].type === 'wall') {
         return;
       }
@@ -702,19 +732,21 @@ const VidenteGame = () => {
       let goldGained = 0;
       let energyHealed = 0;
       
-      if (cell.type === 'gold' && !cell.collected && cell.value) {
-        goldGained = cell.value;
-        const newBoard = [...board.map(row => [...row])];
-        newBoard[currentPos.y][currentPos.x].collected = true;
-        setBoard(newBoard);
-        setAdventurerGold(prev => prev + goldGained);
-        
-        // Mostrar el modal cuando el aventurero recoge el oro
+      if (cell.type === 'exit') {
         setShowRoundEndModal(true);
         setIsExecuting(false);
         return;
       }
-      
+
+      if (cell.type === 'gold' && !cell.collected && cell.value) {
+        goldGained = cell.value;
+        const newBoard = [...board.map(row => [...row])];
+        newBoard[currentPos.y][currentPos.x].collected = true;
+        newBoard[currentPos.y][currentPos.x].revealed = true;
+        setBoard(newBoard);
+        setAdventurerGold(prev => prev + goldGained);
+      }
+
       if (cell.type === 'pill' && !cell.collected && cell.healAmount) {
         energyHealed = cell.healAmount;
         const newBoard = [...board.map(row => [...row])];
@@ -857,7 +889,16 @@ const VidenteGame = () => {
     if (cell.type === 'door') {
       content = '🚪';
       bgColor = '#3a5a3a';
-    } 
+    }
+    else if (cell.type === 'exit') {
+      content = (
+        <div className="flex flex-col items-center justify-center h-full">
+          <div className="text-xl">🏁</div>
+          <div className="text-xs text-yellow-300">salida</div>
+        </div>
+      );
+      bgColor = '#5a3a1a';
+    }
     else if (cell.type === 'wall') {
       content = '🧱';
       bgColor = '#1a1a1a';
@@ -1454,7 +1495,7 @@ const VidenteGame = () => {
           <div className="bg-gradient-to-b from-indigo-900 to-purple-900 rounded-lg p-8 max-w-md mx-4 border-2 border-yellow-400 shadow-2xl">
             <div className="text-center">
               <div className="text-3xl font-bold text-yellow-400 mb-4">
-                💰 ¡Oro Recogido!
+                🏁 ¡Salida Alcanzada!
               </div>
               
               <div className="bg-gray-800 rounded-lg p-4 mb-6">
