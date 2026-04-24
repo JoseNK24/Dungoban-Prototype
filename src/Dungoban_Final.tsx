@@ -102,7 +102,7 @@ interface CardPattern {
 }
 
 interface Cell {
-  type: 'empty' | 'door' | 'exit' | 'gold' | 'wall' | 'pill' | 'enemy';
+  type: 'empty' | 'door' | 'gold' | 'wall' | 'pill' | 'enemy';
   revealed: boolean;
   scanned: boolean;
   threatLevel: number;
@@ -114,8 +114,6 @@ interface Cell {
   defeated?: boolean;
   hasContent?: boolean;
 }
-
-type Stage = 'Play' | 'PlayerMovement' | 'Stand';
 
 interface Card {
   id: number;
@@ -199,7 +197,6 @@ const VidenteGame = () => {
   const VICTORY_TARGET = 50;
   const NUM_GOLDS = 1;
   const MIN_GOLD_DISTANCE = 3;
-  const MIN_EXIT_DISTANCE = 4;
 
   const generateBoard = (): Cell[][] => {
     const board = Array(GRID_HEIGHT).fill(null).map(() => 
@@ -216,47 +213,9 @@ const VidenteGame = () => {
       y: Math.floor(Math.random() * GRID_HEIGHT)
     };
     board[doorPos.y][doorPos.x] = { type: 'door' as const, revealed: true, scanned: false, threatLevel: 0 };
-
-    // Exit tile: estructura de salida independiente. La sala se cierra al pisarla.
-    const effectiveMinExitDistance = MIN_EXIT_DISTANCE + Math.floor(Math.random() * 3); // 0-2
-    let exitPlaced = false;
-    let exitAttempts = 0;
-    while (!exitPlaced && exitAttempts < 200) {
-      const exitPos = {
-        x: Math.floor(Math.random() * GRID_WIDTH),
-        y: Math.floor(Math.random() * GRID_HEIGHT),
-      };
-      const distanceFromDoor = Math.abs(exitPos.x - doorPos.x) + Math.abs(exitPos.y - doorPos.y);
-      if (
-        board[exitPos.y][exitPos.x].type === 'empty' &&
-        distanceFromDoor >= effectiveMinExitDistance
-      ) {
-        board[exitPos.y][exitPos.x] = {
-          type: 'exit' as const,
-          revealed: true,
-          scanned: false,
-          threatLevel: 0,
-        };
-        exitPlaced = true;
-      }
-      exitAttempts++;
-    }
-    // Fallback: coloca exit en la primera celda vacía lo bastante lejos que quede.
-    if (!exitPlaced) {
-      outer: for (let y = 0; y < GRID_HEIGHT; y++) {
-        for (let x = 0; x < GRID_WIDTH; x++) {
-          const dist = Math.abs(x - doorPos.x) + Math.abs(y - doorPos.y);
-          if (board[y][x].type === 'empty' && dist >= 2) {
-            board[y][x] = { type: 'exit' as const, revealed: true, scanned: false, threatLevel: 0 };
-            exitPlaced = true;
-            break outer;
-          }
-        }
-      }
-    }
-
-  // Gold reward per round: random between 0 and 10 (inclusive)
-  const goldValue = Math.floor(Math.random() * 11);
+    
+  // Gold reward per round: random between 5 and 10 (inclusive)
+  const goldValue = Math.floor(Math.random() * 6) + 5;
   // Add extra randomness so the minimum distance between door and gold varies per board
   const effectiveMinGoldDistance = MIN_GOLD_DISTANCE + Math.floor(Math.random() * 3); // adds 0-2
     let goldsPlaced = 0;
@@ -274,7 +233,7 @@ const VidenteGame = () => {
       if (board[goldPos.y][goldPos.x].type === 'empty' && distanceFromDoor >= effectiveMinGoldDistance) {
         board[goldPos.y][goldPos.x] = { 
           type: 'gold' as const, 
-          revealed: true, 
+          revealed: false, 
           scanned: false, 
           threatLevel: 0,
           value: goldValue,
@@ -297,7 +256,7 @@ const VidenteGame = () => {
       if (board[goldPos.y][goldPos.x].type === 'empty' && distanceFromDoor >= Math.min(2, effectiveMinGoldDistance)) {
         board[goldPos.y][goldPos.x] = { 
           type: 'gold' as const, 
-          revealed: true, 
+          revealed: false, 
           scanned: false, 
           threatLevel: 0,
           value: goldValue,
@@ -567,7 +526,7 @@ const VidenteGame = () => {
           const checkX = x + dx;
           const checkY = y + dy;
           const cell = board[checkY][checkX];
-          if (cell.type === 'wall' || cell.type === 'door' || cell.type === 'exit') {
+          if (cell.type === 'wall' || cell.type === 'door') {
             return false;
           }
         }
@@ -579,18 +538,13 @@ const VidenteGame = () => {
     for (const cell of pattern) {
       const newX = x + cell.pos[1];
       const newY = y + cell.pos[0];
-
+      
       if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
         return false;
       }
-
+      
       const boardCell = board[newY][newX];
-      if (
-        boardCell.type === 'wall' ||
-        boardCell.type === 'door' ||
-        boardCell.type === 'exit' ||
-        boardCell.type === 'gold'
-      ) {
+      if (boardCell.type === 'wall' || boardCell.type === 'door' || boardCell.type === 'gold') {
         return false;
       }
     }
@@ -621,7 +575,7 @@ const VidenteGame = () => {
           const revealY = y + dy;
           if (revealX >= 0 && revealX < GRID_WIDTH && revealY >= 0 && revealY < GRID_HEIGHT) {
             const cell = newBoard[revealY][revealX];
-            if (cell.type !== 'wall' && cell.type !== 'door' && cell.type !== 'exit') {
+            if (cell.type !== 'wall' && cell.type !== 'door') {
               cell.revealed = true;
               cell.counted = true;
             }
@@ -748,18 +702,14 @@ const VidenteGame = () => {
       let goldGained = 0;
       let energyHealed = 0;
       
-      if (cell.type === 'gold' && !cell.collected && typeof cell.value === 'number') {
+      if (cell.type === 'gold' && !cell.collected && cell.value) {
         goldGained = cell.value;
         const newBoard = [...board.map(row => [...row])];
         newBoard[currentPos.y][currentPos.x].collected = true;
         setBoard(newBoard);
-        if (goldGained > 0) {
-          setAdventurerGold(prev => prev + goldGained);
-        }
-      }
-
-      if (cell.type === 'exit') {
-        // Fin de sala: el aventurero llega a la salida.
+        setAdventurerGold(prev => prev + goldGained);
+        
+        // Mostrar el modal cuando el aventurero recoge el oro
         setShowRoundEndModal(true);
         setIsExecuting(false);
         return;
@@ -907,32 +857,26 @@ const VidenteGame = () => {
     if (cell.type === 'door') {
       content = '🚪';
       bgColor = '#3a5a3a';
-    }
-    else if (cell.type === 'exit') {
-      content = '🪜';
-      bgColor = '#2a4a6a';
-      borderColor = '#5a8abf';
-    }
-    else if (cell.type === 'gold') {
-      if (cell.collected) {
-        content = '';
-      } else {
-        content = (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="text-xl">💰</div>
-            <div className="text-xs text-yellow-400">${cell.value}</div>
-          </div>
-        );
-        bgColor = '#5a5a2a';
-      }
-    }
+    } 
     else if (cell.type === 'wall') {
       content = '🧱';
       bgColor = '#1a1a1a';
       borderColor = '#666';
     }
     else if (cell.revealed) {
-      if (cell.type === 'enemy' && cell.enemyType) {
+      if (cell.type === 'gold') {
+        if (cell.collected) {
+          content = '';
+        } else {
+          content = (
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className="text-xl">💰</div>
+              <div className="text-xs text-yellow-400">${cell.value}</div>
+            </div>
+          );
+          bgColor = '#5a5a2a';
+        }
+      } else if (cell.type === 'enemy' && cell.enemyType) {
         const enemy = ENEMY_TYPES[cell.enemyType];
         const isDefeated = cell.defeated;
         content = (
@@ -1054,19 +998,6 @@ const VidenteGame = () => {
   const rondasHastaAlquiler = RENT_FREQUENCY - ((currentRound - 1) % RENT_FREQUENCY);
   const esUltimaRondaAntesAlquiler = rondasHastaAlquiler === 1;
 
-  const pathEndsAtExit = (() => {
-    if (path.length < 2) return false;
-    const last = path[path.length - 1];
-    return board[last.y]?.[last.x]?.type === 'exit';
-  })();
-
-  const currentStage: Stage = showRoundEndModal
-    ? 'Stand'
-    : isExecuting
-      ? 'PlayerMovement'
-      : 'Play';
-  void currentStage;
-
   return (
   <div className="w-full min-h-screen p-4 flex flex-col items-center bg-black">
       {/* Pantalla de Tutorial */}
@@ -1093,10 +1024,10 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">🎯 Objetivo</h3>
                 <p className="text-sm leading-relaxed">
-                  Debes trazar para el aventurero una ruta que vaya de la <span className="text-green-300 font-semibold">puerta 🚪</span> a la <span className="text-blue-300 font-semibold">salida 🪜</span>, recogiendo por el camino el <span className="text-yellow-300 font-semibold">oro 💰</span> que pueda.
+                  Debes decirle al aventurero qué camino recorrer para llegar al oro.
                 </p>
                 <p className="text-sm leading-relaxed mt-2 text-purple-300">
-                  No todas las rutas son igual de seguras. Si no logra salir, perderás tu parte del botín total.
+                  No todas las rutas son igual de seguras. Recuerda, si no logra salir, perderás tu parte del botín total.
                 </p>
               </div>
               
@@ -1459,8 +1390,7 @@ const VidenteGame = () => {
         
         <button
           onClick={executePath}
-          disabled={!pathEndsAtExit || isExecuting || gameOver}
-          title={!pathEndsAtExit ? 'La ruta debe terminar en la salida 🪜' : undefined}
+          disabled={path.length < 2 || isExecuting || gameOver}
           className="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           <Play size={20} />
