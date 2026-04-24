@@ -1102,7 +1102,6 @@ const VidenteGame = () => {
                 onClick={() => {
                   setSelectedCard(card);
                   setCardRotation(0);
-                  setIsCrystalBallActive(false);
                   setSelectedPrediction(null);
                 }}
                 disabled={card.cooldownRemaining > 0 || mode !== 'explore'}
@@ -1163,7 +1162,6 @@ const VidenteGame = () => {
                   onClick={() => {
                     setSelectedPrediction(selectedPrediction === pred.id ? null : pred.id);
                     setSelectedCard(null);
-                    setIsCrystalBallActive(false);
                   }}
                   disabled={mode !== 'explore' || isExecuting || gameOver}
                   className={`p-1.5 rounded text-center transition-all disabled:opacity-40 ${
