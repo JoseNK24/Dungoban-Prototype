@@ -233,7 +233,7 @@ const VidenteGame = () => {
       if (board[goldPos.y][goldPos.x].type === 'empty' && distanceFromDoor >= effectiveMinGoldDistance) {
         board[goldPos.y][goldPos.x] = { 
           type: 'gold' as const, 
-          revealed: true, 
+          revealed: false, 
           scanned: false, 
           threatLevel: 0,
           value: goldValue,
@@ -256,7 +256,7 @@ const VidenteGame = () => {
       if (board[goldPos.y][goldPos.x].type === 'empty' && distanceFromDoor >= Math.min(2, effectiveMinGoldDistance)) {
         board[goldPos.y][goldPos.x] = { 
           type: 'gold' as const, 
-          revealed: true, 
+          revealed: false, 
           scanned: false, 
           threatLevel: 0,
           value: goldValue,
@@ -858,26 +858,25 @@ const VidenteGame = () => {
       content = '🚪';
       bgColor = '#3a5a3a';
     } 
-    else if (cell.type === 'gold') {
-      if (cell.collected) {
-        content = '';
-      } else {
-        content = (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="text-xl">💰</div>
-            <div className="text-xs text-yellow-400">${cell.value}</div>
-          </div>
-        );
-        bgColor = '#5a5a2a';
-      }
-    }
     else if (cell.type === 'wall') {
       content = '🧱';
       bgColor = '#1a1a1a';
       borderColor = '#666';
     }
     else if (cell.revealed) {
-      if (cell.type === 'enemy' && cell.enemyType) {
+      if (cell.type === 'gold') {
+        if (cell.collected) {
+          content = '';
+        } else {
+          content = (
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className="text-xl">💰</div>
+              <div className="text-xs text-yellow-400">${cell.value}</div>
+            </div>
+          );
+          bgColor = '#5a5a2a';
+        }
+      } else if (cell.type === 'enemy' && cell.enemyType) {
         const enemy = ENEMY_TYPES[cell.enemyType];
         const isDefeated = cell.defeated;
         content = (
