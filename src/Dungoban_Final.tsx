@@ -110,9 +110,11 @@ interface Cell {
   collected?: boolean;
   enemyType?: EnemyType;
   healAmount?: number;
-  counted?: boolean; // Para la mecánica de la bola de cristal
+  counted?: boolean;
   defeated?: boolean;
   hasContent?: boolean;
+  prediction?: string;       // id del tipo predicho
+  predictionFailed?: boolean; // ya no admite más predicciones
 }
 
 interface Card {
@@ -130,14 +132,43 @@ interface Position {
   y: number;
 }
 
-const CARD_COOLDOWNS: Record<ActiveCardPowerLevel, number> = {
-  Neutral: 1,
-  specificRevealer: 2,
-  Omniscient: 3
+const PREDICTION_TYPES = [
+  { id: 'enemy-FIRE',  icon: '🔥', label: 'Fuego' },
+  { id: 'enemy-MELEE', icon: '⚔️', label: 'Melee' },
+  { id: 'enemy-BOSS',  icon: '💀', label: 'Boss' },
+  { id: 'pill',        icon: '💊', label: 'Píldora' },
+  { id: 'gold',        icon: '💰', label: 'Cofre' },
+  { id: 'empty',       icon: '✕',  label: 'Vacío' },
+] as const;
+
+const checkPrediction = (cell: Cell, prediction: string): boolean => {
+  if (prediction === 'empty') return cell.type === 'empty';
+  if (prediction === 'pill')  return cell.type === 'pill';
+  if (prediction === 'gold')  return cell.type === 'gold';
+  if (prediction.startsWith('enemy-')) {
+    const eType = prediction.split('-')[1] as EnemyType;
+    return cell.type === 'enemy' && cell.enemyType === eType;
+  }
+  return false;
 };
 
-const HEADER_HIDDEN_PROBABILITY_BY_ICON: Partial<Record<string, number>> = {
-  '💰': 0.8
+const CARD_COOLDOWNS: Record<ActiveCardPowerLevel, number> = {
+  Neutral: 2,
+  specificRevealer: 3,
+  Omniscient: 5
+};
+
+const UPGRADE_COST: Partial<Record<ActiveCardPowerLevel, number>> = {
+  Neutral: 3,
+  specificRevealer: 5,
+};
+
+const HEADER_HIDDEN_PROBABILITY_BY_ICON: Partial<Record<string, number>> = {};
+
+const POWER_LEVEL_COLORS: Record<ActiveCardPowerLevel, string> = {
+  Neutral: '#a0522d',
+  specificRevealer: '#a8a9ad',
+  Omniscient: '#d4af37'
 };
 
 const FIXED_HAND: Array<{
@@ -146,9 +177,9 @@ const FIXED_HAND: Array<{
   detectionType: DetectionType;
 }> = [
   { pattern: 'I', powerLevel: 'Neutral', detectionType: null },
-  { pattern: 'T', powerLevel: 'specificRevealer', detectionType: 'FIRE' },
-  { pattern: 'L', powerLevel: 'specificRevealer', detectionType: 'PILL' },
-  { pattern: 'O', powerLevel: 'Omniscient', detectionType: null }
+  { pattern: 'T', powerLevel: 'Neutral', detectionType: null },
+  { pattern: 'L', powerLevel: 'Neutral', detectionType: null },
+  { pattern: 'O', powerLevel: 'Neutral', detectionType: null }
 ];
 
 const createFixedCards = (): Card[] => {
@@ -158,7 +189,7 @@ const createFixedCards = (): Card[] => {
     patternData: CARD_PATTERNS[cardConfig.pattern].pattern.map(cell => ({
       pos: [cell.pos[0], cell.pos[1]] as [number, number]
     })),
-    color: CARD_PATTERNS[cardConfig.pattern].color,
+    color: POWER_LEVEL_COLORS[cardConfig.powerLevel],
     powerLevel: cardConfig.powerLevel,
     detectionType: cardConfig.detectionType,
     cooldownRemaining: 0
@@ -189,13 +220,9 @@ const getCardPowerLabel = (powerLevel: CardPowerLevel): string => {
 };
 
 const VidenteGame = () => {
-  const GRID_WIDTH = 8;
-  const GRID_HEIGHT = 8;
+  const GRID_WIDTH = 6;
+  const GRID_HEIGHT = 9;
   const INITIAL_ENERGY = 40;
-  const INITIAL_RENT = 30;
-  const RENT_FREQUENCY = 4;
-  const VICTORY_TARGET = 50;
-  const NUM_GOLDS = 1;
   const MIN_GOLD_DISTANCE = 3;
 
   const generateBoard = (): Cell[][] => {
@@ -242,13 +269,14 @@ const VidenteGame = () => {
 
   // Gold reward per round: random between 5 and 10 (inclusive)
   const goldValue = Math.floor(Math.random() * 6) + 5;
+  const numGolds = Math.floor(Math.random() * 4) + 1; // 1 a 4 cofres
   // Add extra randomness so the minimum distance between door and gold varies per board
   const effectiveMinGoldDistance = MIN_GOLD_DISTANCE + Math.floor(Math.random() * 3); // adds 0-2
     let goldsPlaced = 0;
     let attempts = 0;
     const maxAttempts = 100;
     
-    while (goldsPlaced < NUM_GOLDS && attempts < maxAttempts) {
+    while (goldsPlaced < numGolds && attempts < maxAttempts) {
       const goldPos = {
         x: Math.floor(Math.random() * GRID_WIDTH),
         y: Math.floor(Math.random() * GRID_HEIGHT)
@@ -271,7 +299,7 @@ const VidenteGame = () => {
       attempts++;
     }
     
-    while (goldsPlaced < NUM_GOLDS) {
+    while (goldsPlaced < numGolds) {
       const goldPos = {
         x: Math.floor(Math.random() * GRID_WIDTH),
         y: Math.floor(Math.random() * GRID_HEIGHT)
@@ -353,10 +381,8 @@ const VidenteGame = () => {
 
   // Estados del sistema de aventurero y multiplicador
   const [adventurerGold, setAdventurerGold] = useState(0);
-  const [multiplier, setMultiplier] = useState(1.0);
   const [playerGold, setPlayerGold] = useState(0);
-  const [rentPrice, setRentPrice] = useState(INITIAL_RENT);
-  const [showCashoutMessage, setShowCashoutMessage] = useState(false);
+  const [multiplier, setMultiplier] = useState(1.0);
   
   const [board, setBoard] = useState(generateBoard());
   const [energy, setEnergy] = useState(INITIAL_ENERGY);
@@ -366,7 +392,6 @@ const VidenteGame = () => {
   const [cardRotation, setCardRotation] = useState(0);
   const [availableCards, setAvailableCards] = useState<Card[]>(() => createFixedCards());
   const [mode, setMode] = useState('explore');
-  const [showRoundEndModal, setShowRoundEndModal] = useState(false);
   const [showTutorial, setShowTutorial] = useState(true);
   
   const findDoorPosition = (board: Cell[][]): Position => {
@@ -384,63 +409,75 @@ const VidenteGame = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStep, setExecutionStep] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const [victory, setVictory] = useState(false);
+  const [selectedPrediction, setSelectedPrediction] = useState<string | null>(null);
   const [crystalBallCounter, setCrystalBallCounter] = useState(0);
-  const [isCrystalBallActive, setIsCrystalBallActive] = useState(false);
 
 
-  // Función para continuar jugando (aumenta multiplicador)
-  const handleContinuePlaying = () => {
-    // Incrementar multiplicador en 0.1
-    setMultiplier(prev => Math.round((prev + 0.1) * 10) / 10);
-    
-    // Generar nuevo tablero y reiniciar para la siguiente ronda
-    const newBoard = generateBoard();
-    setBoard(newBoard);
-    setPath([findDoorPosition(newBoard)]);
-    setMode('explore');
-    setAvailableCards(prev => tickCardCooldowns(prev));
-    setSelectedCard(null);
-    setCardRotation(0);
-    setHoveredCell(null);
-    
-    // Incrementar ronda
-    const nextRound = currentRound + 1;
-    setCurrentRound(nextRound);
-    
-    // Verificar pago de alquiler cada 4 rondas DESPUÉS de la decisión
-    if ((nextRound - 1) % RENT_FREQUENCY === 0 && nextRound > RENT_FREQUENCY) {
-      if (playerGold < rentPrice) {
-        setGameOver(true);
-        setShowRoundEndModal(false);
-        return;
-      } else {
-        setPlayerGold(prev => prev - rentPrice);
-        setRentPrice(prev => prev + 10);
+  const checkAllPredictions = () => {
+    const newBoard = board.map(row => row.map(c => ({ ...c })));
+    let hits = 0;
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const cell = newBoard[y][x];
+        if (cell.prediction && !cell.revealed) {
+          const predictionId = cell.prediction;
+          const correct = checkPrediction(cell, predictionId);
+          cell.prediction = undefined;
+          if (correct) {
+            cell.revealed = true;
+            if (predictionId !== 'empty') hits++;
+          } else {
+            cell.predictionFailed = true;
+          }
+        }
       }
     }
-    
-    // Verificar victoria
-    if (playerGold >= VICTORY_TARGET && !victory) {
-      setVictory(true);
-    }
-    
-    // Cerrar modal
-    setShowRoundEndModal(false);
+    if (hits > 0) setCrystalBallCounter(prev => prev + hits);
+    setBoard(newBoard);
   };
 
-  // Función para cobrar el oro del aventurero desde el modal
-  const handleCashOutFromModal = () => {
-    // Cobrar el oro actual
-    const totalCashout = Math.floor(adventurerGold * multiplier);
-    setPlayerGold(prev => prev + totalCashout);
-    
-    // Crear nuevo aventurero
-    setAdventurerGold(0);
-    setMultiplier(1.0);
-    setEnergy(INITIAL_ENERGY);
-    
-    // Generar nuevo tablero
+  const placePrediction = (x: number, y: number) => {
+    if (!selectedPrediction) return;
+    const cell = board[y][x];
+    if (['wall', 'door', 'exit'].includes(cell.type)) return;
+    if (cell.revealed) return;
+    if (cell.predictionFailed) return;
+    const newBoard = board.map(row => row.map(c => ({ ...c })));
+    const target = newBoard[y][x];
+    // Toggle: clic sobre la misma predicción la borra
+    target.prediction = target.prediction === selectedPrediction ? undefined : selectedPrediction;
+    setBoard(newBoard);
+  };
+
+  const upgradeCard = (cardId: number) => {
+    const card = availableCards.find(c => c.id === cardId);
+    if (!card) return;
+    const cost = UPGRADE_COST[card.powerLevel];
+    if (cost === undefined || crystalBallCounter < cost) return;
+    const nextLevel: ActiveCardPowerLevel =
+      card.powerLevel === 'Neutral' ? 'specificRevealer' : 'Omniscient';
+    const nextDetection: DetectionType =
+      nextLevel === 'specificRevealer' ? 'FIRE' : null;
+    setCrystalBallCounter(prev => prev - cost);
+    setAvailableCards(prev => prev.map(c =>
+      c.id === cardId
+        ? { ...c, powerLevel: nextLevel, detectionType: nextDetection, color: POWER_LEVEL_COLORS[nextLevel] }
+        : c
+    ));
+  };
+
+  const reactivateCard = (cardId: number) => {
+    const card = availableCards.find(c => c.id === cardId);
+    if (!card || card.cooldownRemaining === 0) return;
+    const cost = card.cooldownRemaining;
+    if (crystalBallCounter < cost) return;
+    setCrystalBallCounter(prev => prev - cost);
+    setAvailableCards(prev => prev.map(c =>
+      c.id === cardId ? { ...c, cooldownRemaining: 0 } : c
+    ));
+  };
+
+  const advanceToNextBoard = () => {
     const newBoard = generateBoard();
     setBoard(newBoard);
     setPath([findDoorPosition(newBoard)]);
@@ -449,38 +486,8 @@ const VidenteGame = () => {
     setSelectedCard(null);
     setCardRotation(0);
     setHoveredCell(null);
-    
-    // Reiniciar estado de la bola de cristal
-    setCrystalBallCounter(0);
-    setIsCrystalBallActive(false);
-    
-    // Incrementar ronda
-    const nextRound = currentRound + 1;
-    setCurrentRound(nextRound);
-    
-    // Verificar pago de alquiler DESPUÉS de cobrar el oro
-    if ((nextRound - 1) % RENT_FREQUENCY === 0 && nextRound > RENT_FREQUENCY) {
-      if (playerGold + totalCashout < rentPrice) {
-        setGameOver(true);
-        setShowRoundEndModal(false);
-        return;
-      } else {
-        setPlayerGold(prev => prev - rentPrice);
-        setRentPrice(prev => prev + 10);
-      }
-    }
-    
-    // Verificar victoria
-    if (playerGold >= VICTORY_TARGET && !victory) {
-      setVictory(true);
-    }
-    
-    // Mostrar mensaje de cobro
-    setShowCashoutMessage(true);
-    setTimeout(() => setShowCashoutMessage(false), 3000);
-    
-    // Cerrar modal
-    setShowRoundEndModal(false);
+    setSelectedPrediction(null);
+    setCurrentRound(prev => prev + 1);
   };
 
   // Reset game completo
@@ -489,25 +496,21 @@ const VidenteGame = () => {
     setBoard(newBoard);
     setEnergy(INITIAL_ENERGY);
     setAdventurerGold(0);
-    setMultiplier(1.0);
     setPlayerGold(0);
-    setRentPrice(INITIAL_RENT);
+    setMultiplier(1.0);
     setCurrentRound(1);
     setMode('explore');
     setPath([findDoorPosition(newBoard)]);
     setIsExecuting(false);
     setExecutionStep(0);
     setGameOver(false);
-    setVictory(false);
     setCrystalBallCounter(0);
-    setIsCrystalBallActive(false);
     setHoveredCell(null);
     setSelectedCard(null);
+    setSelectedPrediction(null);
     setCardRotation(0);
     setAvailableCards(createFixedCards());
-    setShowCashoutMessage(false);
-    setShowRoundEndModal(false);
-    setShowTutorial(true); // Mostrar tutorial al reiniciar
+    setShowTutorial(true);
   };
 
   const rotatePattern = (pattern: CardPattern[], rotation: number): CardPattern[] => {
@@ -531,35 +534,7 @@ const VidenteGame = () => {
     }
   };
 
-  const getClarivoyanceSize = (predictions: number): number => {
-    if (predictions >= 9) return 4;
-    if (predictions >= 6) return 3;
-    if (predictions >= 3) return 2;
-    return 0;
-  };
-
   const canPlaceCard = (x: number, y: number, pattern: CardPattern[]): boolean => {
-    // Caso especial para el modo de clarividencia
-    if (isCrystalBallActive) {
-      const size = getClarivoyanceSize(crystalBallCounter);
-      // Verificar que el área está dentro del tablero
-      if (x + size - 1 >= GRID_WIDTH || y + size - 1 >= GRID_HEIGHT) {
-        return false;
-      }
-      // Verificar que no hay muros ni puertas en el área
-      for (let dy = 0; dy < size; dy++) {
-        for (let dx = 0; dx < size; dx++) {
-          const checkX = x + dx;
-          const checkY = y + dy;
-          const cell = board[checkY][checkX];
-          if (cell.type === 'wall' || cell.type === 'door' || cell.type === 'exit') {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
     // Caso normal para patrones de cartas
     for (const cell of pattern) {
       const newX = x + cell.pos[1];
@@ -578,40 +553,14 @@ const VidenteGame = () => {
   };
 
   const placeCard = (x: number, y: number): void => {
-    // Si estamos en modo 2x2, permitir colocar sin necesidad de una carta
-    if (!isCrystalBallActive && (!selectedCard || selectedCard.cooldownRemaining > 0)) return;
-    
-    // Si no estamos en modo clarividencia, necesitamos el patrón de la carta
-    const pattern = isCrystalBallActive ? [] : rotatePattern(selectedCard!.patternData, cardRotation);
-    
-    if (!canPlaceCard(x, y, pattern)) {
-      return;
-    }
-    
+    if (!selectedCard || selectedCard.cooldownRemaining > 0) return;
+
+    const pattern = rotatePattern(selectedCard.patternData, cardRotation);
+    if (!canPlaceCard(x, y, pattern)) return;
+
     const newBoard = [...board.map(row => [...row])];
-    const detectionType = isCrystalBallActive ? null : selectedCard!.detectionType;
-    const powerLevel = isCrystalBallActive ? null : selectedCard!.powerLevel;
-    
-    // Si estamos en modo clarividencia, revelar el área según el tamaño
-    if (isCrystalBallActive) {
-      const size = getClarivoyanceSize(crystalBallCounter);
-      for (let dy = 0; dy < size; dy++) {
-        for (let dx = 0; dx < size; dx++) {
-          const revealX = x + dx;
-          const revealY = y + dy;
-          if (revealX >= 0 && revealX < GRID_WIDTH && revealY >= 0 && revealY < GRID_HEIGHT) {
-            const cell = newBoard[revealY][revealX];
-            if (cell.type !== 'wall' && cell.type !== 'door' && cell.type !== 'exit') {
-              cell.revealed = true;
-              cell.counted = true;
-            }
-          }
-        }
-      }
-      setIsCrystalBallActive(false);
-      setBoard(newBoard);
-      return;
-    }
+    const detectionType = selectedCard.detectionType;
+    const powerLevel = selectedCard.powerLevel;
 
     let matchesFound = 0;
 
@@ -652,20 +601,11 @@ const VidenteGame = () => {
       }
     });
 
-    // Incrementamos el contador por cada coincidencia encontrada
-    if (matchesFound > 0) {
-      const newCounter = crystalBallCounter + matchesFound;
-      setCrystalBallCounter(newCounter);
-      
-      // Si llegamos a 3 o más, activamos la bola de cristal
-      if (newCounter >= 3) {
-        setIsCrystalBallActive(true);
-      }
-    }
-    
+    if (matchesFound > 0) setCrystalBallCounter(prev => prev + matchesFound);
+
     setBoard(newBoard);
-    
-    if (!isCrystalBallActive && selectedCard) {
+
+    if (selectedCard) {
       setAvailableCards(prev => prev.map(card => (
         card.id === selectedCard.id
           ? {
@@ -683,8 +623,10 @@ const VidenteGame = () => {
     if (isExecuting || gameOver) return;
 
     if (mode === 'explore') {
-      if (selectedCard || isCrystalBallActive) {
+      if (selectedCard) {
         placeCard(x, y);
+      } else if (selectedPrediction) {
+        placePrediction(x, y);
       }
     } else if (mode === 'trace') {
       const lastPos = path[path.length - 1];
@@ -733,8 +675,8 @@ const VidenteGame = () => {
       let energyHealed = 0;
       
       if (cell.type === 'exit') {
-        setShowRoundEndModal(true);
         setIsExecuting(false);
+        advanceToNextBoard();
         return;
       }
 
@@ -777,6 +719,7 @@ const VidenteGame = () => {
       setEnergy(newEnergy);
       
       if (newEnergy <= 0) {
+        setPlayerGold(prev => prev + adventurerGold);
         setGameOver(true);
         setIsExecuting(false);
         return;
@@ -789,7 +732,7 @@ const VidenteGame = () => {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [isExecuting, executionStep, energy, adventurerGold, playerGold, currentRound, rentPrice, victory]);
+  }, [isExecuting, executionStep, energy, adventurerGold, playerGold, currentRound]);
 
   // Efecto para el comando secreto y prevención de menú contextual
   useEffect(() => {
@@ -979,21 +922,7 @@ const VidenteGame = () => {
     }
     
     if (mode === 'explore') {
-      if (isCrystalBallActive && hoveredCell) {
-        // Preview para el modo de clarividencia
-        const size = getClarivoyanceSize(crystalBallCounter);
-        const isInArea = 
-          x >= hoveredCell.x && x <= hoveredCell.x + (size - 1) &&
-          y >= hoveredCell.y && y <= hoveredCell.y + (size - 1);
-
-        if (isInArea) {
-          const canPlace = canPlaceCard(hoveredCell.x, hoveredCell.y, []);
-          borderColor = canPlace ? '#ffeb3b' : '#ff0000';
-          if (canPlace) {
-            bgColor = '#ffeb3b20';
-          }
-        }
-      } else if (selectedCard) {
+      if (selectedCard) {
         // Preview normal para cartas
         const pattern = rotatePattern(selectedCard.patternData, cardRotation);
         const isInPattern = pattern.some(cell => {
@@ -1014,10 +943,14 @@ const VidenteGame = () => {
       }
     }
     
+    const predType = cell.prediction
+      ? PREDICTION_TYPES.find(p => p.id === cell.prediction)
+      : null;
+
     return (
       <div
         className="relative w-full h-full flex items-center justify-center text-sm font-bold cursor-pointer transition-all"
-        style={{ 
+        style={{
           backgroundColor: bgColor,
           border: `2px solid ${borderColor}`,
         }}
@@ -1032,12 +965,18 @@ const VidenteGame = () => {
         }}
       >
         {content}
+        {predType && !cell.revealed && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-lg opacity-70">{predType.icon}</div>
+            <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-blue-400" />
+          </div>
+        )}
+        {cell.predictionFailed && !cell.revealed && (
+          <div className="absolute top-0 right-0 text-[10px] leading-none bg-red-600/80 text-white rounded-bl px-0.5">✕</div>
+        )}
       </div>
     );
   };
-
-  const rondasHastaAlquiler = RENT_FREQUENCY - ((currentRound - 1) % RENT_FREQUENCY);
-  const esUltimaRondaAntesAlquiler = rondasHastaAlquiler === 1;
 
   return (
   <div className="w-full min-h-screen p-4 flex flex-col items-center bg-black">
@@ -1086,9 +1025,9 @@ const VidenteGame = () => {
               
               {/* Consejos */}
               <div className="bg-gray-800 rounded-lg p-4">
-                <h3 className="text-lg font-bold text-yellow-300 mb-2">⚠️ Alquiler y Energía</h3>
+                <h3 className="text-lg font-bold text-yellow-300 mb-2">⚠️ Energía</h3>
                 <p className="text-sm leading-relaxed">
-                  Ten cuidado con la <span className="text-yellow-300 font-semibold">energía</span> de los aventureros y recuerda cobrarles tu parte del botín antes de que llegue el día de pagar el alquiler.
+                  Ten cuidado con la <span className="text-yellow-300 font-semibold">energía</span> de los aventureros. Si llega a cero, perderás todo el botín.
                 </p>
               </div>
             </div>
@@ -1105,17 +1044,10 @@ const VidenteGame = () => {
         </div>
       )}
 
-      {/* Mensaje de Cash Out */}
-      {showCashoutMessage && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-600 rounded-lg p-4 text-white font-bold text-center z-50 animate-bounce">
-          El aventurero se retira. Llega uno nuevo.
-        </div>
-      )}
-
       {/* Header con estadísticas principales */}
       <div className="bg-black rounded-lg p-4 mb-4 w-full max-w-6xl">
   {/* En pantallas pequeñas: 1 columna; en >=sm: columnas con anchos iguales a los paneles inferiores */}
-  <div className="grid grid-cols-1 lg:grid-cols-[16rem_16rem_16rem] gap-2 lg:gap-4 text-white justify-center">
+  <div className="grid grid-cols-1 lg:grid-cols-[16rem_16rem] gap-2 lg:gap-4 text-white justify-center">
           {/* Aventurero Actual (compacto) */}
           <div className="bg-gradient-to-br from-orange-600/30 to-orange-800/30 rounded-md p-2 border-2 border-orange-500/50">
             <div className="flex items-center gap-2 mb-1">
@@ -1135,47 +1067,26 @@ const VidenteGame = () => {
                 <span className="text-[11px]">Multiplicador:</span>
                 <span className="font-bold text-green-400 text-sm">x{multiplier.toFixed(1)}</span>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[11px]">Cofres en sala:</span>
+                <span className="font-bold text-yellow-300 text-sm">
+                  {board.flat().filter(c => c.type === 'gold').length} 💰
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Jugador (compacto) */}
+          {/* Oro total acumulado */}
           <div className="bg-gradient-to-br from-blue-600/30 to-blue-800/30 rounded-md p-2 border-2 border-blue-500/50">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="text-blue-400" size={18} />
-              <span className="font-bold text-xs">Tu Oro Total</span>
+              <span className="font-bold text-xs">Oro acumulado</span>
             </div>
             <div className="flex justify-center items-center">
               <span className="font-bold text-yellow-400 text-2xl">${playerGold}</span>
             </div>
           </div>
 
-          {/* Alquiler (compacto) */}
-          <div className={`rounded-md p-2 border-2 ${
-            esUltimaRondaAntesAlquiler 
-              ? 'bg-gradient-to-br from-red-600/40 to-red-800/40 border-red-500/70' 
-              : 'bg-gradient-to-br from-purple-600/30 to-purple-800/30 border-purple-500/50'
-          }`}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xl">🏠</span>
-              <span className="font-bold text-xs">Alquiler</span>
-            </div>
-            <div className="space-y-1">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px]">Precio:</span>
-                <span className="font-bold text-yellow-400 text-sm">${rentPrice}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[11px]">En:</span>
-                <span className={`font-bold ${esUltimaRondaAntesAlquiler ? 'text-red-400' : 'text-gray-400'} text-sm`}>
-                  {rondasHastaAlquiler} {rondasHastaAlquiler === 1 ? 'ronda' : 'rondas'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[11px]">Ronda:</span>
-                <span className="font-bold text-gray-300 text-sm">{currentRound}</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1191,7 +1102,8 @@ const VidenteGame = () => {
                 onClick={() => {
                   setSelectedCard(card);
                   setCardRotation(0);
-                  setIsCrystalBallActive(false); // Desactivar clarividencia al seleccionar una carta
+                  setIsCrystalBallActive(false);
+                  setSelectedPrediction(null);
                 }}
                 disabled={card.cooldownRemaining > 0 || mode !== 'explore'}
                 style={{
@@ -1239,6 +1151,32 @@ const VidenteGame = () => {
                 </div>
               </button>
             ))}
+          </div>
+
+          {/* Paleta de predicciones */}
+          <div className="mt-4">
+            <div className="text-white font-bold mb-2 text-sm">🎯 Predicciones</div>
+            <div className="grid grid-cols-3 gap-1">
+              {PREDICTION_TYPES.map(pred => (
+                <button
+                  key={pred.id}
+                  onClick={() => {
+                    setSelectedPrediction(selectedPrediction === pred.id ? null : pred.id);
+                    setSelectedCard(null);
+                    setIsCrystalBallActive(false);
+                  }}
+                  disabled={mode !== 'explore' || isExecuting || gameOver}
+                  className={`p-1.5 rounded text-center transition-all disabled:opacity-40 ${
+                    selectedPrediction === pred.id
+                      ? 'ring-2 ring-blue-400 bg-blue-900/60'
+                      : 'bg-gray-800 hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="text-base">{pred.icon}</div>
+                  <div className="text-[9px] text-gray-300 mt-0.5">{pred.label}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1320,103 +1258,79 @@ const VidenteGame = () => {
         </div>
 
   {/* Bola de Cristal */}
-  <div className="bg-black rounded-lg p-4 flex-shrink-0 w-full sm:w-auto flex flex-col items-center">
-          <div className="text-white font-bold mb-3 text-center">
-            🔮 Visión
-            <div className="text-sm font-normal mt-1">
-              {crystalBallCounter} predicciones
-              {crystalBallCounter >= 3 && (
-                <div className="text-xs text-yellow-400 mt-1">
-                  {crystalBallCounter >= 9 ? "¡Área 4x4 disponible!" :
-                   crystalBallCounter >= 6 ? "¡Área 3x3 disponible!" :
-                   "¡Área 2x2 disponible!"}
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div 
-            className="relative flex items-center justify-center rounded-full"
-            onClick={() => {
-              if (crystalBallCounter >= 3) {
-                if (isCrystalBallActive) {
-                  setIsCrystalBallActive(false);
-                } else {
-                  setIsCrystalBallActive(true);
-                  setSelectedCard(null);
-                }
-              }
-            }}
-            style={{
-              width: 'clamp(120px, 20vw, 160px)',
-              height: 'clamp(120px, 20vw, 160px)',
-              background: isCrystalBallActive
-                ? 'radial-gradient(circle at 40% 40%, rgba(250, 204, 21, 0.4), rgba(234, 179, 8, 0.6), rgba(161, 98, 7, 0.9))'
-                : 'radial-gradient(circle at 40% 40%, rgba(147, 51, 234, 0.4), rgba(79, 70, 229, 0.6), rgba(30, 27, 75, 0.9))',
-              border: isCrystalBallActive
-                ? '4px solid rgba(234, 179, 8, 0.8)'
-                : '4px solid rgba(131, 49, 207, 0.6)',
-              boxShadow: isCrystalBallActive
-                ? '0 0 30px rgba(234, 179, 8, 0.5), inset 0 0 30px rgba(234, 179, 8, 0.3)'
-                : '0 0 30px rgba(147, 51, 234, 0.5), inset 0 0 30px rgba(147, 51, 234, 0.3)',
-              cursor: isCrystalBallActive ? 'pointer' : 'default',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            {selectedCard && selectedCard.powerLevel === 'specificRevealer' && selectedCard.detectionType ? (
-              <div className="flex flex-col items-center justify-center">
-                <div className="text-6xl mb-2" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))' }}>
-                  {getAbilityIcon(selectedCard.detectionType)}
-                </div>
-                <div className="text-xs text-purple-200 font-bold text-center px-2">
-                  {selectedCard.detectionType === 'FIRE' && 'Fuego'}
-                  {selectedCard.detectionType === 'MELEE' && 'Melee'}
-                  {selectedCard.detectionType === 'BOSS' && 'Boss'}
-                  {selectedCard.detectionType === 'PILL' && 'Píldora'}
-                </div>
-              </div>
-            ) : selectedCard?.powerLevel === 'Omniscient' ? (
-              <div className="text-center">
-                <div className="text-5xl mb-2" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))' }}>👁️</div>
-                <div className="text-xs text-purple-200 px-4">Revela todo el patrón</div>
-              </div>
-            ) : isCrystalBallActive ? (
-              <div className="text-center">
-                <div className="text-5xl mb-2" style={{ filter: 'drop-shadow(0 0 8px rgba(234, 179, 8, 0.8))' }}>👁️</div>
-              </div>
-            ) : selectedCard && mode === 'explore' ? (
-              <div className="text-center">
-                <div className="text-4xl mb-2 opacity-50">❓</div>
-                <div className="text-xs text-gray-400 px-4">Sin habilidad</div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <div className="text-4xl mb-2 opacity-30">💫</div>
-                <div className="text-xs text-gray-500 px-4">Selecciona una carta</div>
-              </div>
+  <div className="bg-black rounded-lg p-4 flex-shrink-0 w-full sm:w-64 flex flex-col items-center">
+    <div className="text-white font-bold mb-2 text-center">
+      🔮 Visión
+      <div className="text-sm font-normal mt-1">
+        <span className="text-purple-300 font-bold text-lg">{crystalBallCounter}</span> éter
+      </div>
+    </div>
+
+    {/* Bola decorativa */}
+    <div
+      className="relative flex items-center justify-center rounded-full mb-4"
+      style={{
+        width: '100px', height: '100px',
+        background: 'radial-gradient(circle at 40% 40%, rgba(147,51,234,0.4), rgba(79,70,229,0.6), rgba(30,27,75,0.9))',
+        border: '4px solid rgba(131,49,207,0.6)',
+        boxShadow: '0 0 20px rgba(147,51,234,0.4)',
+      }}
+    >
+      <div className="text-3xl opacity-60">💫</div>
+    </div>
+
+    {/* Acciones con éter */}
+    <div className="w-full space-y-2 text-xs text-white">
+      <div className="text-gray-400 font-bold uppercase tracking-wider mb-1">Usar éter</div>
+      {availableCards.map(card => {
+        const upgradeCost = UPGRADE_COST[card.powerLevel];
+        const canUpgrade = upgradeCost !== undefined && crystalBallCounter >= upgradeCost && card.powerLevel !== 'Omniscient' && card.cooldownRemaining === 0;
+        const canReactivate = card.cooldownRemaining > 0 && crystalBallCounter >= card.cooldownRemaining;
+        if (!canUpgrade && !canReactivate) return null;
+        return (
+          <div key={card.id} className="flex flex-col gap-1">
+            {canUpgrade && (
+              <button
+                onClick={() => upgradeCard(card.id)}
+                disabled={isExecuting || gameOver}
+                className="w-full px-2 py-1.5 rounded text-left flex justify-between items-center hover:opacity-90 disabled:opacity-40 transition-all"
+                style={{ backgroundColor: POWER_LEVEL_COLORS[card.powerLevel] + '33', border: `1px solid ${POWER_LEVEL_COLORS[card.powerLevel]}` }}
+              >
+                <span>⬆ Mejorar {CARD_PATTERNS[card.pattern].icon}</span>
+                <span className="font-bold">{upgradeCost} éter</span>
+              </button>
             )}
-            
-            <div 
-              className="absolute rounded-full opacity-50"
-              style={{
-                width: '60px',
-                height: '60px',
-                top: '20px',
-                left: '30px',
-                background: 'radial-gradient(circle, rgba(255, 255, 255, 0.6), transparent)',
-                pointerEvents: 'none'
-              }}
-            />
+            {canReactivate && (
+              <button
+                onClick={() => reactivateCard(card.id)}
+                disabled={isExecuting || gameOver}
+                className="w-full px-2 py-1.5 rounded text-left flex justify-between items-center bg-yellow-900/30 border border-yellow-600 hover:opacity-90 disabled:opacity-40 transition-all"
+              >
+                <span>⚡ Reactivar {CARD_PATTERNS[card.pattern].icon}</span>
+                <span className="font-bold">{card.cooldownRemaining} éter</span>
+              </button>
+            )}
           </div>
-        </div>
+        );
+      })}
+      {availableCards.every(card => {
+        const upgradeCost = UPGRADE_COST[card.powerLevel];
+        return (upgradeCost === undefined || crystalBallCounter < upgradeCost || card.powerLevel === 'Omniscient')
+          && (card.cooldownRemaining === 0 || crystalBallCounter < card.cooldownRemaining);
+      }) && (
+        <div className="text-gray-500 text-center py-2">Sin acciones disponibles</div>
+      )}
+    </div>
+  </div>
       </div>
 
       {/* Controls */}
-      <div className="flex gap-4 mt-4">
+      <div className="flex gap-4 mt-4 flex-wrap justify-center">
         <button
           onClick={() => {
             setMode(mode === 'explore' ? 'trace' : 'explore');
             setSelectedCard(null);
+            setSelectedPrediction(null);
             setCardRotation(0);
           }}
           disabled={isExecuting || gameOver}
@@ -1429,6 +1343,16 @@ const VidenteGame = () => {
           {mode === 'explore' ? '🔍 MODO: EXPLORAR' : '✏️ MODO: TRAZAR RUTA'}
         </button>
         
+        {mode === 'explore' && (
+          <button
+            onClick={checkAllPredictions}
+            disabled={isExecuting || gameOver || !board.flat().some(c => c.prediction)}
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            🎯 COMPROBAR
+          </button>
+        )}
+
         <button
           onClick={executePath}
           disabled={path.length < 2 || isExecuting || gameOver}
@@ -1467,92 +1391,13 @@ const VidenteGame = () => {
       {/* Game Over / Victory */}
       {gameOver && (
         <div className="mt-4 bg-red-600 rounded-lg p-6 text-white text-center">
-          <div className="text-3xl font-bold mb-2">
-            {energy <= 0 ? '💀 ¡SIN ENERGÍA!' : '🏠 ¡NO PUEDES PAGAR EL ALQUILER!'}
-          </div>
-          <div className="text-lg">
-            {energy <= 0 
-              ? 'Te quedaste sin energía para continuar.' 
-              : `Necesitabas ${rentPrice} para el alquiler pero solo tienes ${playerGold}.`
-            }
-          </div>
+          <div className="text-3xl font-bold mb-2">💀 ¡SIN ENERGÍA!</div>
+          <div className="text-lg">Te quedaste sin energía para continuar.</div>
           <div className="text-sm mt-2">Ronda alcanzada: {currentRound}</div>
-          <div className="text-sm">Oro total acumulado: ${playerGold}</div>
+          <div className="text-sm">Oro cobrado: ${playerGold}</div>
         </div>
       )}
 
-      {victory && !gameOver && (
-        <div className="mt-4 bg-green-600 rounded-lg p-6 text-white text-center">
-          <div className="text-3xl font-bold mb-2">🎉 ¡OBJETIVO ALCANZADO!</div>
-          <div className="text-lg">¡Conseguiste ${playerGold} de oro!</div>
-          <div className="text-sm mt-2">Puedes continuar jugando en modo supervivencia</div>
-        </div>
-      )}
-
-      {/* Modal de fin de ronda */}
-      {showRoundEndModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gradient-to-b from-indigo-900 to-purple-900 rounded-lg p-8 max-w-md mx-4 border-2 border-yellow-400 shadow-2xl">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-yellow-400 mb-4">
-                🏁 ¡Salida Alcanzada!
-              </div>
-              
-              <div className="bg-gray-800 rounded-lg p-4 mb-6">
-                <div className="text-white mb-3">
-                  <div className="text-lg font-semibold mb-2">Oro del aventurero:</div>
-                  <div className="text-2xl text-yellow-400">💰 ${adventurerGold}</div>
-                </div>
-                
-                <div className="text-white">
-                  <div className="text-lg font-semibold mb-2">Multiplicador actual:</div>
-                  <div className="text-2xl text-green-400">x{multiplier.toFixed(1)}</div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-white/20">
-                  <div className="text-yellow-300 text-xl font-bold">
-                    Total si cobras: ${Math.floor(adventurerGold * multiplier)}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="text-white mb-6">
-                <p className="mb-2 font-semibold">¿Qué quieres hacer?</p>
-                <p className="text-sm text-gray-300">
-                  Si continúas, el multiplicador aumentará a x{(multiplier + 0.1).toFixed(1)}
-                </p>
-                <p className="text-sm text-gray-300 mt-1">
-                  Si cobras, recibirás el oro y vendrá un nuevo aventurero
-                </p>
-              </div>
-              
-              <div className="flex gap-4">
-                <button
-                  onClick={handleContinuePlaying}
-                  className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold text-white transition-all transform hover:scale-105"
-                >
-                  <div className="text-xl mb-1">🎮</div>
-                  <div>Continuar Jugando</div>
-                  <div className="text-xs mt-1">
-                    (Multiplicador → x{(multiplier + 0.1).toFixed(1)})
-                  </div>
-                </button>
-                
-                <button
-                  onClick={handleCashOutFromModal}
-                  className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-bold text-white transition-all transform hover:scale-105"
-                >
-                  <div className="text-xl mb-1">💸</div>
-                  <div>Cobrar Oro</div>
-                  <div className="text-xs mt-1">
-                    (+${Math.floor(adventurerGold * multiplier)} a tu oro)
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
