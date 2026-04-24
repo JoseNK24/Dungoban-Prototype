@@ -996,7 +996,7 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">📜 Tu Historia</h3>
                 <p className="text-sm leading-relaxed">
-                  Eres <span className="text-purple-300 font-semibold">Dungoban</span>, un vidente que tiene una pequeña carpa a la que los aventureros acuden para saber cómo hacerse ricos. A pesar de ser famoso, Dungoban debe pagar el alquiler de su carpa, que va aumentando cada vez más.
+                  Eres <span className="text-purple-300 font-semibold">Dungoban</span>, un vidente al que los aventureros acuden para saber cómo hacerse ricos. Tu fama crece mazmorra a mazmorra: cuanto más lejos llegue el aventurero, más oro acumulas.
                 </p>
               </div>
               
@@ -1004,10 +1004,10 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">🎯 Objetivo</h3>
                 <p className="text-sm leading-relaxed">
-                  Debes decirle al aventurero qué camino recorrer para llegar al oro.
+                  Guía al aventurero de la entrada a la salida recogiendo todo el oro posible por el camino. Las mazmorras no terminan: cada sala superada abre la siguiente.
                 </p>
                 <p className="text-sm leading-relaxed mt-2 text-purple-300">
-                  No todas las rutas son igual de seguras. Recuerda, si no logra salir, perderás tu parte del botín total.
+                  No todas las rutas son igual de seguras. Si el aventurero muere, pierde el oro que llevaba encima.
                 </p>
               </div>
               
@@ -1016,10 +1016,10 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">🎴 Tus Poderes</h3>
                 <p className="text-sm leading-relaxed">
-                  Siempre tienes <span className="text-cyan-300 font-semibold">4 cartas fijas</span> en forma de piezas. Usa <span className="text-cyan-300 font-semibold">Click Derecho</span> para girarlas. Cada carta tiene un nivel distinto y, al usarla, entra en cooldown durante varios turnos.
+                  Siempre tienes <span className="text-cyan-300 font-semibold">4 cartas fijas</span> en forma de piezas. Usa <span className="text-cyan-300 font-semibold">Click Derecho</span> para girarlas. Al usarlas entran en cooldown, y puedes mejorarlas gastando <span className="text-purple-300 font-semibold">éter</span>.
                 </p>
                 <p className="text-sm leading-relaxed mt-2 text-purple-300">
-                  Las cartas neutrales sólo detectan presencia, las específicas revelan su objetivo y las omniscientes destapan todo su patrón. Cada 3 coincidencias, además, obtendrás una revelación de área con la bola de cristal.
+                  Las neutrales detectan presencia, las específicas revelan su objetivo y las omniscientes destapan todo su patrón. Cada predicción acertada suma +1 éter.
                 </p>
               </div>
               
