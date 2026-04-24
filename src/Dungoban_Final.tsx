@@ -90,6 +90,8 @@ const CARD_PATTERNS = {
 type EnemyType = keyof typeof ENEMY_TYPES;
 type CardType = keyof typeof CARD_PATTERNS;
 type DetectionType = EnemyType | 'PILL' | null;
+type CardPowerLevel = 'Disabled' | 'Neutral' | 'specificRevealer' | 'Omniscient';
+type ActiveCardPowerLevel = Exclude<CardPowerLevel, 'Disabled'>;
 
 type CardPatternPos = {
   pos: [number, number];
@@ -118,15 +120,69 @@ interface Card {
   pattern: CardType;
   patternData: CardPattern[];
   color: string;
+  powerLevel: ActiveCardPowerLevel;
   detectionType: DetectionType;
-  used: boolean;
-  usedWithDetection?: DetectionType;
+  cooldownRemaining: number;
 }
 
 interface Position {
   x: number;
   y: number;
 }
+
+const CARD_COOLDOWNS: Record<ActiveCardPowerLevel, number> = {
+  Neutral: 1,
+  specificRevealer: 2,
+  Omniscient: 3
+};
+
+const FIXED_HAND: Array<{
+  pattern: CardType;
+  powerLevel: ActiveCardPowerLevel;
+  detectionType: DetectionType;
+}> = [
+  { pattern: 'I', powerLevel: 'Neutral', detectionType: null },
+  { pattern: 'T', powerLevel: 'specificRevealer', detectionType: 'FIRE' },
+  { pattern: 'L', powerLevel: 'specificRevealer', detectionType: 'PILL' },
+  { pattern: 'O', powerLevel: 'Omniscient', detectionType: null }
+];
+
+const createFixedCards = (): Card[] => {
+  return FIXED_HAND.map((cardConfig, index) => ({
+    id: index + 1,
+    pattern: cardConfig.pattern,
+    patternData: CARD_PATTERNS[cardConfig.pattern].pattern.map(cell => ({
+      pos: [cell.pos[0], cell.pos[1]] as [number, number]
+    })),
+    color: CARD_PATTERNS[cardConfig.pattern].color,
+    powerLevel: cardConfig.powerLevel,
+    detectionType: cardConfig.detectionType,
+    cooldownRemaining: 0
+  }));
+};
+
+const tickCardCooldowns = (cards: Card[]): Card[] => {
+  return cards.map(card => (
+    card.cooldownRemaining > 0
+      ? { ...card, cooldownRemaining: card.cooldownRemaining - 1 }
+      : card
+  ));
+};
+
+const getCardPowerLabel = (powerLevel: CardPowerLevel): string => {
+  switch (powerLevel) {
+    case 'Disabled':
+      return 'En cooldown';
+    case 'Neutral':
+      return 'Neutral';
+    case 'specificRevealer':
+      return 'Específica';
+    case 'Omniscient':
+      return 'Omnisciente';
+    default:
+      return powerLevel;
+  }
+};
 
 const VidenteGame = () => {
   const GRID_WIDTH = 8;
@@ -137,126 +193,6 @@ const VidenteGame = () => {
   const VICTORY_TARGET = 50;
   const NUM_GOLDS = 1;
   const MIN_GOLD_DISTANCE = 3;
-
-  // Tipos de enemigos
-  const ENEMY_TYPES = {
-    FIRE: { icon: '🔥', damage: 3, color: '#ff6b6b' },
-    MELEE: { icon: '⚔️', damage: 2, color: '#ffa500' },
-    BOSS: { icon: '💀', damage: 8, color: '#8b0000' }
-  };
-
-  // Cartas de escaneo con patrones de Tetrominos
-  const CARD_PATTERNS = {
-    I: { 
-      name: 'I', 
-      pattern: [
-        {pos: [0,0]}, 
-        {pos: [1,0]},
-        {pos: [2,0]},
-        {pos: [3,0]}
-      ], 
-      icon: 'I',
-      color: '#00f0f0'
-    },
-    J: { 
-      name: 'J', 
-      pattern: [
-        {pos: [0,0]},
-        {pos: [1,0]}, 
-        {pos: [1,1]},
-        {pos: [1,2]}
-      ], 
-      icon: 'J',
-      color: '#0000f0'
-    },
-    L: { 
-      name: 'L', 
-      pattern: [
-        {pos: [0,2]},
-        {pos: [1,0]}, 
-        {pos: [1,1]},
-        {pos: [1,2]}
-      ], 
-      icon: 'L',
-      color: '#f0a000'
-    },
-    O: { 
-      name: 'O', 
-      pattern: [
-        {pos: [0,0]}, 
-        {pos: [0,1]}, 
-        {pos: [1,0]},
-        {pos: [1,1]}
-      ], 
-      icon: 'O',
-      color: '#f0f000'
-    },
-    S: { 
-      name: 'S', 
-      pattern: [
-        {pos: [0,1]},
-        {pos: [0,2]}, 
-        {pos: [1,0]},
-        {pos: [1,1]}
-      ], 
-      icon: 'S',
-      color: '#00f000'
-    },
-    T: { 
-      name: 'T', 
-      pattern: [
-        {pos: [0,1]}, 
-        {pos: [1,0]},
-        {pos: [1,1]},
-        {pos: [1,2]}
-      ], 
-      icon: 'T',
-      color: '#a000f0'
-    },
-    Z: { 
-      name: 'Z', 
-      pattern: [
-        {pos: [0,0]},
-        {pos: [0,1]}, 
-        {pos: [1,1]},
-        {pos: [1,2]}
-      ], 
-      icon: 'Z',
-      color: '#ff1493'
-    }
-  };
-
-  const generateRandomCards = (): Card[] => {
-    const numCards = Math.floor(Math.random() * 3) + 1;
-    const patternTypes = Object.keys(CARD_PATTERNS) as CardType[];
-    const cards: Card[] = [];
-    const detectableTypes = ['FIRE', 'MELEE', 'BOSS', 'PILL'] as const;
-    const shuffledPatterns = [...patternTypes].sort(() => Math.random() - 0.5);
-    
-    for (let i = 0; i < numCards; i++) {
-      const randomPattern = shuffledPatterns[i % shuffledPatterns.length];
-      const pattern = CARD_PATTERNS[randomPattern].pattern.map(cell => ({ 
-        pos: [cell.pos[0], cell.pos[1]] as [number, number]
-      }));
-      const hasAbility = Math.random() < 0.6;
-      let detectionType: DetectionType = null;
-      
-      if (hasAbility) {
-        detectionType = detectableTypes[Math.floor(Math.random() * detectableTypes.length)];
-      }
-      
-      cards.push({
-        id: i + 1,
-        pattern: randomPattern,
-        patternData: pattern,
-        color: CARD_PATTERNS[randomPattern].color,
-        detectionType: detectionType,
-        used: false
-      });
-    }
-    
-    return cards;
-  };
 
   const generateBoard = (): Cell[][] => {
     const board = Array(GRID_HEIGHT).fill(null).map(() => 
@@ -398,7 +334,7 @@ const VidenteGame = () => {
   const [hoveredCell, setHoveredCell] = useState<Position | null>(null);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [cardRotation, setCardRotation] = useState(0);
-  const [availableCards, setAvailableCards] = useState(generateRandomCards());
+  const [availableCards, setAvailableCards] = useState<Card[]>(() => createFixedCards());
   const [mode, setMode] = useState('explore');
   const [showRoundEndModal, setShowRoundEndModal] = useState(false);
   const [showTutorial, setShowTutorial] = useState(true);
@@ -433,7 +369,10 @@ const VidenteGame = () => {
     setBoard(newBoard);
     setPath([findDoorPosition(newBoard)]);
     setMode('explore');
-    setAvailableCards(generateRandomCards());
+    setAvailableCards(prev => tickCardCooldowns(prev));
+    setSelectedCard(null);
+    setCardRotation(0);
+    setHoveredCell(null);
     
     // Incrementar ronda
     const nextRound = currentRound + 1;
@@ -476,7 +415,10 @@ const VidenteGame = () => {
     setBoard(newBoard);
     setPath([findDoorPosition(newBoard)]);
     setMode('explore');
-    setAvailableCards(generateRandomCards());
+    setAvailableCards(prev => tickCardCooldowns(prev));
+    setSelectedCard(null);
+    setCardRotation(0);
+    setHoveredCell(null);
     
     // Reiniciar estado de la bola de cristal
     setCrystalBallCounter(0);
@@ -532,7 +474,7 @@ const VidenteGame = () => {
     setHoveredCell(null);
     setSelectedCard(null);
     setCardRotation(0);
-    setAvailableCards(generateRandomCards());
+    setAvailableCards(createFixedCards());
     setShowCashoutMessage(false);
     setShowRoundEndModal(false);
     setShowTutorial(true); // Mostrar tutorial al reiniciar
@@ -607,7 +549,7 @@ const VidenteGame = () => {
 
   const placeCard = (x: number, y: number): void => {
     // Si estamos en modo 2x2, permitir colocar sin necesidad de una carta
-    if (!isCrystalBallActive && (!selectedCard || selectedCard.used)) return;
+    if (!isCrystalBallActive && (!selectedCard || selectedCard.cooldownRemaining > 0)) return;
     
     // Si no estamos en modo clarividencia, necesitamos el patrón de la carta
     const pattern = isCrystalBallActive ? [] : rotatePattern(selectedCard!.patternData, cardRotation);
@@ -618,6 +560,7 @@ const VidenteGame = () => {
     
     const newBoard = [...board.map(row => [...row])];
     const detectionType = isCrystalBallActive ? null : selectedCard!.detectionType;
+    const powerLevel = isCrystalBallActive ? null : selectedCard!.powerLevel;
     
     // Si estamos en modo clarividencia, revelar el área según el tamaño
     if (isCrystalBallActive) {
@@ -649,7 +592,10 @@ const VidenteGame = () => {
       if (newX >= 0 && newX < GRID_WIDTH && newY >= 0 && newY < GRID_HEIGHT) {
         const boardCell = newBoard[newY][newX];
         
-        if (detectionType && boardCell.type === 'enemy') {
+        if (powerLevel === 'Omniscient') {
+          boardCell.revealed = true;
+          boardCell.counted = true;
+        } else if (powerLevel === 'specificRevealer' && detectionType && boardCell.type === 'enemy') {
           if (boardCell.enemyType === detectionType) {
             boardCell.revealed = true;
             if (!boardCell.counted) {
@@ -660,7 +606,7 @@ const VidenteGame = () => {
             boardCell.scanned = true;
             boardCell.hasContent = true;
           }
-        } else if (detectionType === 'PILL' && boardCell.type === 'pill' && !boardCell.collected) {
+        } else if (powerLevel === 'specificRevealer' && detectionType === 'PILL' && boardCell.type === 'pill' && !boardCell.collected) {
           boardCell.revealed = true;
           if (!boardCell.counted) {
             matchesFound++;
@@ -690,15 +636,15 @@ const VidenteGame = () => {
     setBoard(newBoard);
     
     if (!isCrystalBallActive && selectedCard) {
-      setAvailableCards(availableCards.map(c => 
-        c.id === selectedCard.id ? { 
-          ...c, 
-          used: true,
-          usedWithDetection: detectionType
-        } : c
-      ));
+      setAvailableCards(prev => prev.map(card => (
+        card.id === selectedCard.id
+          ? {
+              ...card,
+              cooldownRemaining: CARD_COOLDOWNS[selectedCard.powerLevel]
+            }
+          : card
+      )));
     }
-    // setAvailableCards(newCards);
     setSelectedCard(null);
     setCardRotation(0);
   };
@@ -1067,10 +1013,10 @@ const VidenteGame = () => {
               <div className="bg-gray-800 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-yellow-300 mb-2">🎴 Tus Poderes</h3>
                 <p className="text-sm leading-relaxed">
-                  Tienes cartas en forma de piezas que puedes colocar en la mazmorra. Usa <span className="text-cyan-300 font-semibold">Click Derecho</span> para girarlas. Tu bola de cristal reacciona mágicamente a ciertas cartas y hace que puedan predecir la posición de un tipo de contenido de la mazmorra cuando las coloques.
+                  Siempre tienes <span className="text-cyan-300 font-semibold">4 cartas fijas</span> en forma de piezas. Usa <span className="text-cyan-300 font-semibold">Click Derecho</span> para girarlas. Cada carta tiene un nivel distinto y, al usarla, entra en cooldown durante varios turnos.
                 </p>
                 <p className="text-sm leading-relaxed mt-2 text-purple-300">
-                  Cada 3 predicciones acertadas, obtendrás omnisciencia y podrás revelar un área de la mazmorra sin colocar ninguna pieza.
+                  Las cartas neutrales sólo detectan presencia, las específicas revelan su objetivo y las omniscientes destapan todo su patrón. Cada 3 coincidencias, además, obtendrás una revelación de área con la bola de cristal.
                 </p>
               </div>
               
@@ -1173,6 +1119,7 @@ const VidenteGame = () => {
         {/* Panel de cartas */}
         <div className="bg-black rounded-lg p-4 flex-shrink-0 w-full lg:w-64">
           <div className="text-white font-bold mb-3">📇 Cartas de Escaneo</div>
+          <div className="text-xs text-gray-400 mb-3">La mano siempre mantiene 4 cartas.</div>
           <div className="flex flex-row lg:flex-col gap-2 flex-wrap justify-center lg:justify-start">
             {availableCards.map(card => (
               <button
@@ -1182,34 +1129,50 @@ const VidenteGame = () => {
                   setCardRotation(0);
                   setIsCrystalBallActive(false); // Desactivar clarividencia al seleccionar una carta
                 }}
-                disabled={card.used || mode !== 'explore'}
+                disabled={card.cooldownRemaining > 0 || mode !== 'explore'}
                 style={{
-                  backgroundColor: card.used 
+                  backgroundColor: card.cooldownRemaining > 0
                     ? '#4b5563' 
                     : selectedCard?.id === card.id
                       ? card.color
                       : `${card.color}cc`,
-                  opacity: card.used ? 0.5 : 1
+                  opacity: card.cooldownRemaining > 0 ? 0.6 : 1
                 }}
                 className={`px-4 py-3 rounded-lg font-bold transition-all ${
                   selectedCard?.id === card.id ? 'ring-2 ring-yellow-400' : ''
-                } ${card.used ? 'cursor-not-allowed' : 'hover:opacity-90'} text-white text-sm`}
+                } ${card.cooldownRemaining > 0 ? 'cursor-not-allowed' : 'hover:opacity-90'} text-white text-sm text-left`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xl font-black">{CARD_PATTERNS[card.pattern].icon}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-white/80">
+                    {getCardPowerLabel(card.cooldownRemaining > 0 ? 'Disabled' : card.powerLevel)}
+                  </span>
                 </div>
-                
-                {card.used && (
-                  <div className="text-xs mt-1">
-                    <div>✓ Usada</div>
-                    {card.usedWithDetection && (
-                      <div className="flex items-center gap-1 mt-0.5 text-white/80">
-                        <span>Detectaba:</span>
-                        <span className="text-lg" style={{ lineHeight: '1' }}>{getAbilityIcon(card.usedWithDetection)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
+
+                <div className="text-xs mt-2 space-y-1">
+                  {card.cooldownRemaining > 0 ? (
+                    <div>
+                      Disponible en {card.cooldownRemaining} {card.cooldownRemaining === 1 ? 'turno' : 'turnos'}
+                    </div>
+                  ) : (
+                    <div>Lista para usar</div>
+                  )}
+
+                  {card.powerLevel === 'specificRevealer' && card.detectionType && (
+                    <div className="flex items-center gap-1 text-white/80">
+                      <span>Objetivo:</span>
+                      <span className="text-base" style={{ lineHeight: '1' }}>{getAbilityIcon(card.detectionType)}</span>
+                    </div>
+                  )}
+
+                  {card.powerLevel === 'Omniscient' && (
+                    <div className="text-white/80">Revela todo el patrón</div>
+                  )}
+
+                  {card.powerLevel === 'Neutral' && (
+                    <div className="text-white/80">Detecta presencia</div>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -1336,7 +1299,7 @@ const VidenteGame = () => {
               transition: 'all 0.3s ease'
             }}
           >
-            {selectedCard && selectedCard.detectionType ? (
+            {selectedCard && selectedCard.powerLevel === 'specificRevealer' && selectedCard.detectionType ? (
               <div className="flex flex-col items-center justify-center">
                 <div className="text-6xl mb-2" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))' }}>
                   {getAbilityIcon(selectedCard.detectionType)}
@@ -1347,6 +1310,11 @@ const VidenteGame = () => {
                   {selectedCard.detectionType === 'BOSS' && 'Boss'}
                   {selectedCard.detectionType === 'PILL' && 'Píldora'}
                 </div>
+              </div>
+            ) : selectedCard?.powerLevel === 'Omniscient' ? (
+              <div className="text-center">
+                <div className="text-5xl mb-2" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))' }}>👁️</div>
+                <div className="text-xs text-purple-200 px-4">Revela todo el patrón</div>
               </div>
             ) : isCrystalBallActive ? (
               <div className="text-center">
