@@ -138,6 +138,10 @@ const CARD_COOLDOWNS: Record<ActiveCardPowerLevel, number> = {
   Omniscient: 3
 };
 
+const HEADER_HIDDEN_PROBABILITY_BY_ICON: Partial<Record<string, number>> = {
+  '💰': 0.8
+};
+
 const FIXED_HAND: Array<{
   pattern: CardType;
   powerLevel: ActiveCardPowerLevel;
@@ -833,7 +837,24 @@ const VidenteGame = () => {
     };
   }, [board]);
 
-  const getLineContent = (cells: Cell[]): string => {
+  const shouldShowHeaderIcon = (lineId: string, icon: string, count: number): boolean => {
+    const hiddenProbability = HEADER_HIDDEN_PROBABILITY_BY_ICON[icon] ?? 0;
+
+    if (hiddenProbability <= 0) {
+      return true;
+    }
+
+    const seed = `${lineId}-${icon}-${count}`;
+    let hash = 0;
+
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) % 1000;
+    }
+
+    return (hash / 1000) >= hiddenProbability;
+  };
+
+  const getLineContent = (cells: Cell[], lineId: string): string => {
     const counts: { [key: string]: number } = {};
     
     // Contar ocurrencias
@@ -843,18 +864,21 @@ const VidenteGame = () => {
         counts[icon] = (counts[icon] || 0) + 1;
       } else if (cell.type === 'pill' && !cell.collected) {
         counts['💊'] = (counts['💊'] || 0) + 1;
+      } else if (cell.type === 'gold' && !cell.collected) {
+        counts['💰'] = (counts['💰'] || 0) + 1;
       }
     });
     
     // Formatear la salida
     return Object.entries(counts)
+      .filter(([icon, count]) => shouldShowHeaderIcon(lineId, icon, count))
       .map(([icon, count]) => `x${count} ${icon}`)
       .join(' ');
   };
 
   const getColumnContent = (colIndex: number): string => {
     const cells = Array.from({ length: GRID_HEIGHT }, (_, row) => board[row][colIndex]);
-    return getLineContent(cells);
+    return getLineContent(cells, `col-${colIndex}`);
   };
 
   const getAbilityIcon = (detectionType: DetectionType) => {
@@ -868,7 +892,7 @@ const VidenteGame = () => {
   };
 
   const getRowContent = (rowIndex: number): string => {
-    return getLineContent(board[rowIndex]);
+    return getLineContent(board[rowIndex], `row-${rowIndex}`);
   };
 
   const renderCell = (cell: Cell, x: number, y: number) => {
