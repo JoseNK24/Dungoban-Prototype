@@ -411,11 +411,14 @@ const VidenteGame = () => {
   const [gameOver, setGameOver] = useState(false);
   const [selectedPrediction, setSelectedPrediction] = useState<string | null>(null);
   const [crystalBallCounter, setCrystalBallCounter] = useState(0);
+  const [checkBroken, setCheckBroken] = useState(false);
+  const [checkRepairCost, setCheckRepairCost] = useState(2);
 
 
   const checkAllPredictions = () => {
     const newBoard = board.map(row => row.map(c => ({ ...c })));
     let hits = 0;
+    let failed = false;
     for (let y = 0; y < GRID_HEIGHT; y++) {
       for (let x = 0; x < GRID_WIDTH; x++) {
         const cell = newBoard[y][x];
@@ -428,12 +431,21 @@ const VidenteGame = () => {
             if (predictionId !== 'empty') hits++;
           } else {
             cell.predictionFailed = true;
+            failed = true;
           }
         }
       }
     }
     if (hits > 0) setCrystalBallCounter(prev => prev + hits);
+    if (failed) setCheckBroken(true);
     setBoard(newBoard);
+  };
+
+  const repairCheck = () => {
+    if (crystalBallCounter < checkRepairCost) return;
+    setCrystalBallCounter(prev => prev - checkRepairCost);
+    setCheckRepairCost(prev => prev + 2);
+    setCheckBroken(false);
   };
 
   const placePrediction = (x: number, y: number) => {
@@ -505,6 +517,8 @@ const VidenteGame = () => {
     setExecutionStep(0);
     setGameOver(false);
     setCrystalBallCounter(0);
+    setCheckBroken(false);
+    setCheckRepairCost(2);
     setHoveredCell(null);
     setSelectedCard(null);
     setSelectedPrediction(null);
@@ -1311,7 +1325,17 @@ const VidenteGame = () => {
           </div>
         );
       })}
-      {availableCards.every(card => {
+      {checkBroken && (
+        <button
+          onClick={repairCheck}
+          disabled={crystalBallCounter < checkRepairCost || isExecuting || gameOver}
+          className="w-full px-2 py-1.5 rounded text-left flex justify-between items-center bg-red-900/40 border border-red-500 hover:opacity-90 disabled:opacity-40 transition-all"
+        >
+          <span>🔧 Reparar Comprobar</span>
+          <span className="font-bold">{checkRepairCost} éter</span>
+        </button>
+      )}
+      {!checkBroken && availableCards.every(card => {
         const upgradeCost = UPGRADE_COST[card.powerLevel];
         return (upgradeCost === undefined || crystalBallCounter < upgradeCost || card.powerLevel === 'Omniscient')
           && (card.cooldownRemaining === 0 || crystalBallCounter < card.cooldownRemaining);
@@ -1344,10 +1368,14 @@ const VidenteGame = () => {
         {mode === 'explore' && (
           <button
             onClick={checkAllPredictions}
-            disabled={isExecuting || gameOver || !board.flat().some(c => c.prediction)}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isExecuting || gameOver || checkBroken || !board.flat().some(c => c.prediction)}
+            className={`px-6 py-3 rounded-lg font-bold text-white transition-all disabled:cursor-not-allowed ${
+              checkBroken
+                ? 'bg-gray-700 opacity-50 line-through'
+                : 'bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50'
+            }`}
           >
-            🎯 COMPROBAR
+            {checkBroken ? '💔 COMPROBAR' : '🎯 COMPROBAR'}
           </button>
         )}
 
